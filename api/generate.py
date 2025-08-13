@@ -1,103 +1,90 @@
+from http.server import BaseHTTPRequestHandler
 import json
 from datetime import datetime, date, timedelta
 from typing import List, Dict
 
-def handler(request):
-    """Vercel serverless function handler"""
+class handler(BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        """Handle CORS preflight requests"""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
     
-    # Handle CORS
-    if request.method == 'OPTIONS':
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-            },
-            'body': ''
-        }
-    
-    if request.method != 'POST':
-        return {
-            'statusCode': 405,
-            'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'error': 'Method not allowed'})
-        }
-    
-    try:
-        # Parse request body
-        if hasattr(request, 'body'):
-            body = request.body
-        else:
-            body = request.get_json()
-        
-        if isinstance(body, str):
-            data = json.loads(body)
-        else:
-            data = body
-        
-        # Extract parameters
-        engineers = data.get('engineers', [])
-        start_sunday_str = data.get('start_sunday', '')
-        weeks = data.get('weeks', 8)
-        seeds = data.get('seeds', {})
-        leave_data = data.get('leave', [])
-        format_type = data.get('format', 'csv')
-        
-        # Validate engineers
-        if len(engineers) != 6:
-            return {
-                'statusCode': 400,
-                'headers': {'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'Exactly 6 engineers are required'})
-            }
-        
-        # Parse start date
+    def do_POST(self):
+        """Handle POST requests"""
         try:
-            start_sunday = datetime.strptime(start_sunday_str, '%Y-%m-%d').date()
-        except ValueError:
-            return {
-                'statusCode': 400,
-                'headers': {'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'Invalid date format. Use YYYY-MM-DD'})
-            }
+            # Read request body
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length > 0:
+                post_data = self.rfile.read(content_length)
+                data = json.loads(post_data.decode('utf-8'))
+            else:
+                data = {}
         
-        # Generate schedule
-        schedule_data = make_schedule_simple(
-            start_sunday=start_sunday,
-            weeks=weeks,
-            engineers=engineers,
-            seeds=seeds,
-            leave_data=leave_data
-        )
-        
-        # Convert to CSV
-        csv_lines = []
-        if schedule_data:
-            # Header
-            csv_lines.append(','.join(schedule_data[0].keys()))
-            # Data rows
-            for row in schedule_data:
-                csv_lines.append(','.join(str(v) for v in row.values()))
-        
-        csv_content = '\n'.join(csv_lines)
-        
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'text/csv',
-                'Content-Disposition': 'attachment; filename=schedule.csv'
-            },
-            'body': csv_content
-        }
-        
-    except Exception as e:
-        return {
-            'statusCode': 500,
-            'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'error': f'Internal server error: {str(e)}'})
-        }
+            # Extract parameters
+            engineers = data.get('engineers', [])
+            start_sunday_str = data.get('start_sunday', '')
+            weeks = data.get('weeks', 8)
+            seeds = data.get('seeds', {})
+            leave_data = data.get('leave', [])
+            format_type = data.get('format', 'csv')
+            
+            # Validate engineers
+            if len(engineers) != 6:
+                self.send_response(400)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Exactly 6 engineers are required'}).encode())
+                return
+            
+            # Parse start date
+            try:
+                start_sunday = datetime.strptime(start_sunday_str, '%Y-%m-%d').date()
+            except ValueError:
+                self.send_response(400)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Invalid date format. Use YYYY-MM-DD'}).encode())
+                return
+            
+            # Generate schedule
+            schedule_data = make_schedule_simple(
+                start_sunday=start_sunday,
+                weeks=weeks,
+                engineers=engineers,
+                seeds=seeds,
+                leave_data=leave_data
+            )
+            
+            # Convert to CSV
+            csv_lines = []
+            if schedule_data:
+                # Header
+                csv_lines.append(','.join(schedule_data[0].keys()))
+                # Data rows
+                for row in schedule_data:
+                    csv_lines.append(','.join(str(v) for v in row.values()))
+            
+            csv_content = '\n'.join(csv_lines)
+            
+            # Send response
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Type', 'text/csv')
+            self.send_header('Content-Disposition', 'attachment; filename=schedule.csv')
+            self.end_headers()
+            self.wfile.write(csv_content.encode('utf-8'))
+            
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': f'Internal server error: {str(e)}'}).encode())
 
 def build_rotation(engineers: List[str], seed: int = 0) -> List[str]:
     """Build rotation starting from seed position"""
