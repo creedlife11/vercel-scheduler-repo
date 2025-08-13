@@ -1,8 +1,7 @@
 {
   "functions": {
-    "api/*.py": {
-      "runtime": "python3.9",
-      "maxDuration": 30
+    "api/generate.py": {
+      "runtime": "@vercel/python"
     }
   }
 }
