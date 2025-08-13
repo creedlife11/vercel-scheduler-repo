@@ -5,9 +5,17 @@ from datetime import datetime
 import sys
 import os
 
-# Add the parent directory to the path to import schedule_core
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from schedule_core import make_schedule
+# Import schedule_core from the root directory
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+try:
+    from schedule_core import make_schedule
+except ImportError:
+    # Fallback for local development
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from schedule_core import make_schedule
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
