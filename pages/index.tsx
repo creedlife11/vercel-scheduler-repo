@@ -8,9 +8,9 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [seeds, setSeeds] = useState({
     weekend: 0,
-    chat: 0,
     oncall: 1,
-    appointments: 2,
+    contacts: 2,
+    appointments: 3,
     early: 0
   })
   const [leave, setLeave] = useState('')
@@ -190,8 +190,9 @@ export default function Home() {
         <ul>
           <li>Week starts on Sunday</li>
           <li>Weekend coverage alternates: Week A (Mon-Thu,Sat) vs Week B (Sun,Tue-Fri)</li>
-          <li>Weekday roles: Chat, OnCall, Appointments, plus two Early shifts (06:45-15:45)</li>
-          <li>Others work 08:00-17:00 on weekdays, "Weekend" on weekends</li>
+          <li>Weekday roles: On-Call (weekly), Contacts (daily), Appointments (daily), Early shifts (2 engineers, 06:45-15:45)</li>
+          <li>On-call engineer cannot work weekend during their on-call week</li>
+          <li>Remaining engineers work on Tickets (08:00-17:00)</li>
           <li>Seeds control rotation starting points for fair distribution</li>
         </ul>
       </div>
