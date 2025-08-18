@@ -359,7 +359,7 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
             if status == "WORK":
                 if engineer == roles["OnCall"]:
                     assignment = "On-Call"
-                    shift = "08:00-17:00"
+                    shift = "06:45-15:45"  # On-call always works early shift
                 elif engineer == roles["Contacts"]:
                     assignment = "Contacts"
                     shift = "08:00-17:00"
@@ -367,7 +367,7 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
                     assignment = "Appointments"
                     shift = "08:00-17:00"
                 elif engineer == roles["Early1"]:
-                    assignment = "Tickets (Early)"
+                    assignment = "On-Call (Early)"  # This should be the same as OnCall
                     shift = "06:45-15:45"
                 elif engineer == roles["Early2"]:
                     assignment = "Tickets (Early)"

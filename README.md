@@ -132,10 +132,10 @@ Seeds control the starting position for each role rotation, ensuring fair distri
    - **Week B**: Sunday, Tuesday, Wednesday, Thursday, Friday
 
 2. **Weekday Assignments**:
-   - **On-Call**: One engineer per week (Monday-Friday)
-   - **Contacts**: One engineer per day (rotating)
-   - **Appointments**: One engineer per day (rotating)
-   - **Early Shifts**: Two engineers (06:45-15:45)
+   - **On-Call**: One engineer per week (Monday-Friday, 06:45-15:45)
+   - **Contacts**: One engineer per day (rotating, 08:00-17:00)
+   - **Appointments**: One engineer per day (rotating, 08:00-17:00)
+   - **Early Shifts**: On-call engineer + one additional engineer (06:45-15:45)
    - **Tickets**: Remaining engineers (08:00-17:00)
 
 3. **Constraints**:

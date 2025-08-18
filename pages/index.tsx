@@ -289,8 +289,8 @@ export default function Home() {
         <ul>
           <li>Week starts on Sunday</li>
           <li>Weekend coverage alternates: Week A (Mon-Thu,Sat) vs Week B (Sun,Tue-Fri)</li>
-          <li>Weekday roles: On-Call (weekly), Contacts (daily), Appointments (daily), Early shifts (2 engineers, 06:45-15:45)</li>
-          <li>On-call engineer cannot work weekend during their on-call week</li>
+          <li>Weekday roles: On-Call (weekly, 06:45-15:45), Contacts (daily), Appointments (daily), Early shifts (on-call + 1 additional, 06:45-15:45)</li>
+          <li>On-call engineer cannot work weekend during their on-call week and always works early shift</li>
           <li>Remaining engineers work on Tickets (08:00-17:00)</li>
           <li>Seeds control rotation starting points for fair distribution</li>
         </ul>
