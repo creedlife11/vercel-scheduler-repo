@@ -1,8 +1,31 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import re
+import time
+import uuid
+import logging
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Tuple, Optional
+import sys
+import os
+
+# Add lib path for imports
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'lib'))
+
+try:
+    from pydantic import ValidationError
+    from models import ScheduleRequest, ApiError, ScheduleMetadata, ScheduleResponse
+    from invariants import assert_schedule_invariants
+    PYDANTIC_AVAILABLE = True
+except ImportError:
+    PYDANTIC_AVAILABLE = False
+
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 def validate_request_data(data: Dict) -> Tuple[bool, List[str]]:
     """
@@ -115,30 +138,47 @@ class handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
     
-    def send_error_response(self, status_code: int, error_message: str, details: Optional[List[str]] = None):
-        """Send standardized error response"""
+    def send_error_response(self, status_code: int, error_code: str, error_message: str, 
+                           details: Optional[List[str]] = None, request_id: Optional[str] = None):
+        """Send standardized error response with proper structure"""
         self.send_response(status_code)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Content-Type', 'application/json')
         self.end_headers()
         
-        error_data = {'error': error_message}
-        if details:
-            error_data['details'] = details
+        if PYDANTIC_AVAILABLE:
+            error_data = ApiError(
+                code=error_code,
+                message=error_message,
+                details=details,
+                requestId=request_id or str(uuid.uuid4())
+            ).dict()
+        else:
+            error_data = {
+                'code': error_code,
+                'message': error_message,
+                'details': details,
+                'requestId': request_id or str(uuid.uuid4())
+            }
         
         self.wfile.write(json.dumps(error_data).encode())
     
     def do_POST(self):
-        """Handle POST requests with comprehensive validation"""
+        """Handle POST requests with comprehensive validation and observability"""
+        request_id = str(uuid.uuid4())
+        start_time = time.time()
+        
+        logger.info(f"Request {request_id}: Starting schedule generation")
+        
         try:
             # Check content length
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length == 0:
-                self.send_error_response(400, "Request body is required")
+                self.send_error_response(400, "MISSING_BODY", "Request body is required", request_id=request_id)
                 return
             
             if content_length > 1024 * 1024:  # 1MB limit
-                self.send_error_response(413, "Request body too large (max 1MB)")
+                self.send_error_response(413, "BODY_TOO_LARGE", "Request body too large (max 1MB)", request_id=request_id)
                 return
             
             # Read and parse request body
@@ -146,27 +186,48 @@ class handler(BaseHTTPRequestHandler):
                 post_data = self.rfile.read(content_length)
                 data = json.loads(post_data.decode('utf-8'))
             except json.JSONDecodeError as e:
-                self.send_error_response(400, "Invalid JSON format", [str(e)])
+                self.send_error_response(400, "INVALID_JSON", "Invalid JSON format", [str(e)], request_id)
                 return
             except UnicodeDecodeError:
-                self.send_error_response(400, "Invalid character encoding")
+                self.send_error_response(400, "INVALID_ENCODING", "Invalid character encoding", request_id=request_id)
                 return
             
-            # Validate request data
-            is_valid, validation_errors = validate_request_data(data)
-            if not is_valid:
-                self.send_error_response(400, "Validation failed", validation_errors)
-                return
+            logger.info(f"Request {request_id}: Parsed input - {len(data.get('engineers', []))} engineers, {data.get('weeks', 0)} weeks")
             
-            # Extract validated parameters
-            engineers = [eng.strip() for eng in data['engineers']]
-            start_sunday = datetime.strptime(data['start_sunday'], '%Y-%m-%d').date()
-            weeks = data['weeks']
-            seeds = data.get('seeds', {})
-            leave_data = data.get('leave', [])
-            format_type = data.get('format', 'csv').lower()
+            # Enhanced validation with Pydantic if available
+            if PYDANTIC_AVAILABLE:
+                try:
+                    request_model = ScheduleRequest(**data)
+                    engineers = request_model.engineers
+                    start_sunday = datetime.strptime(request_model.start_sunday, '%Y-%m-%d').date()
+                    weeks = request_model.weeks
+                    seeds = request_model.seeds.dict()
+                    leave_data = [entry.dict() for entry in request_model.leave]
+                    format_type = request_model.format
+                    random_seed = request_model.random_seed
+                except ValidationError as e:
+                    error_details = [f"{err['loc'][0] if err['loc'] else 'field'}: {err['msg']}" for err in e.errors()]
+                    self.send_error_response(422, "VALIDATION_ERROR", "Input validation failed", error_details, request_id)
+                    return
+            else:
+                # Fallback to original validation
+                is_valid, validation_errors = validate_request_data(data)
+                if not is_valid:
+                    self.send_error_response(422, "VALIDATION_ERROR", "Input validation failed", validation_errors, request_id)
+                    return
+                
+                engineers = [eng.strip() for eng in data['engineers']]
+                start_sunday = datetime.strptime(data['start_sunday'], '%Y-%m-%d').date()
+                weeks = data['weeks']
+                seeds = data.get('seeds', {})
+                leave_data = data.get('leave', [])
+                format_type = data.get('format', 'csv').lower()
+                random_seed = None
             
-            # Generate schedule
+            # Generate schedule with timing
+            generation_start = time.time()
+            logger.info(f"Request {request_id}: Starting schedule generation")
+            
             schedule_data = make_schedule_simple(
                 start_sunday=start_sunday,
                 weeks=weeks,
@@ -175,31 +236,98 @@ class handler(BaseHTTPRequestHandler):
                 leave_data=leave_data
             )
             
-            # Convert to CSV
-            csv_lines = []
-            if schedule_data:
-                # Header
-                csv_lines.append(','.join(schedule_data[0].keys()))
-                # Data rows
-                for row in schedule_data:
-                    csv_lines.append(','.join(str(v) for v in row.values()))
+            generation_time = time.time() - generation_start
+            logger.info(f"Request {request_id}: Schedule generated in {generation_time:.3f}s")
             
-            csv_content = '\n'.join(csv_lines)
+            # Verify invariants if available
+            warnings = []
+            if PYDANTIC_AVAILABLE:
+                try:
+                    # Convert leave data to map format for invariant checking
+                    leave_map = {engineer: set() for engineer in engineers}
+                    for entry in leave_data:
+                        engineer = entry['Engineer']
+                        leave_date = datetime.strptime(entry['Date'], '%Y-%m-%d').date()
+                        leave_map[engineer].add(leave_date)
+                    
+                    assert_schedule_invariants(schedule_data, engineers, start_sunday, weeks, leave_map)
+                    logger.info(f"Request {request_id}: All invariants verified")
+                except Exception as e:
+                    warnings.append(f"Invariant verification failed: {str(e)}")
+                    logger.warning(f"Request {request_id}: Invariant check failed: {e}")
             
-            # Send response
-            self.send_response(200)
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Content-Type', 'text/csv')
-            self.send_header('Content-Disposition', 'attachment; filename=schedule.csv')
-            self.end_headers()
-            self.wfile.write(csv_content.encode('utf-8'))
+            # Handle different output formats
+            if format_type == 'json':
+                # JSON response with metadata
+                processing_time = (time.time() - start_time) * 1000
+                
+                if PYDANTIC_AVAILABLE:
+                    metadata = ScheduleMetadata(
+                        requestId=request_id,
+                        generatedAt=datetime.utcnow(),
+                        inputSummary={
+                            'engineers': len(engineers),
+                            'weeks': weeks,
+                            'leave_entries': len(leave_data)
+                        },
+                        warnings=warnings,
+                        processingTimeMs=processing_time
+                    )
+                    response = ScheduleResponse(data=schedule_data, metadata=metadata)
+                    response_data = response.dict()
+                else:
+                    response_data = {
+                        'data': schedule_data,
+                        'metadata': {
+                            'requestId': request_id,
+                            'generatedAt': datetime.utcnow().isoformat(),
+                            'inputSummary': {
+                                'engineers': len(engineers),
+                                'weeks': weeks,
+                                'leave_entries': len(leave_data)
+                            },
+                            'warnings': warnings,
+                            'processingTimeMs': processing_time
+                        }
+                    }
+                
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('X-Request-ID', request_id)
+                self.end_headers()
+                self.wfile.write(json.dumps(response_data).encode('utf-8'))
+                
+            else:
+                # CSV response (default)
+                csv_lines = []
+                if schedule_data:
+                    # Header
+                    csv_lines.append(','.join(schedule_data[0].keys()))
+                    # Data rows
+                    for row in schedule_data:
+                        csv_lines.append(','.join(str(v) for v in row.values()))
+                
+                csv_content = '\n'.join(csv_lines)
+                
+                # Generate filename with date
+                filename = f"schedule_{start_sunday.strftime('%Y-%m-%d')}_w{weeks}.csv"
+                
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Content-Type', 'text/csv')
+                self.send_header('Content-Disposition', f'attachment; filename={filename}')
+                self.send_header('X-Request-ID', request_id)
+                self.end_headers()
+                self.wfile.write(csv_content.encode('utf-8'))
+            
+            processing_time = (time.time() - start_time) * 1000
+            logger.info(f"Request {request_id}: Completed in {processing_time:.1f}ms")
             
         except Exception as e:
-            self.send_response(500)
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({'error': f'Internal server error: {str(e)}'}).encode())
+            processing_time = (time.time() - start_time) * 1000
+            logger.error(f"Request {request_id}: Failed after {processing_time:.1f}ms: {e}")
+            self.send_error_response(500, "INTERNAL_ERROR", f"Internal server error: {str(e)}", request_id=request_id)
 
 def build_rotation(engineers: List[str], seed: int = 0) -> List[str]:
     """Build rotation starting from seed position"""

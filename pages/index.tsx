@@ -130,8 +130,18 @@ export default function Home() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error occurred' }))
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
+        const errorData = await response.json().catch(() => ({ 
+          code: 'UNKNOWN_ERROR',
+          message: 'Unknown error occurred',
+          requestId: 'unknown'
+        }))
+        
+        // Handle new error format
+        const errorMessage = errorData.message || errorData.error || `HTTP error! status: ${response.status}`
+        const errorDetails = errorData.details ? `\n\nDetails:\n${errorData.details.join('\n')}` : ''
+        const requestId = errorData.requestId ? `\n\nRequest ID: ${errorData.requestId}` : ''
+        
+        throw new Error(`${errorMessage}${errorDetails}${requestId}`)
       }
 
       const blob = await response.blob()
