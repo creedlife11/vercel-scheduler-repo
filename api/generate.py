@@ -27,10 +27,10 @@ class handler(BaseHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data.decode('utf-8'))
             
-            # Basic validation
+            # Basic validation - support 5-8 engineers
             engineers = data.get('engineers', [])
-            if len(engineers) != 6:
-                self.send_error_response(400, f"Exactly 6 engineers required, got {len(engineers)}", request_id)
+            if len(engineers) < 5 or len(engineers) > 8:
+                self.send_error_response(400, f"Team size must be 5-8 engineers, got {len(engineers)}", request_id)
                 return
             
             start_sunday_str = data.get('start_sunday', '')
@@ -52,9 +52,10 @@ class handler(BaseHTTPRequestHandler):
             seeds = data.get('seeds', {})
             leave_data = data.get('leave', [])
             format_type = data.get('format', 'csv')
+            include_fairness = data.get('include_fairness', False)
             
             # Generate schedule
-            schedule_data = make_schedule_simple(
+            result = make_schedule_simple(
                 start_sunday=start_sunday,
                 weeks=weeks,
                 engineers=engineers,
@@ -62,22 +63,68 @@ class handler(BaseHTTPRequestHandler):
                 leave_data=leave_data
             )
             
-            # Return CSV
-            csv_lines = []
-            if schedule_data:
-                csv_lines.append(','.join(schedule_data[0].keys()))
-                for row in schedule_data:
-                    csv_lines.append(','.join(str(v) for v in row.values()))
+            schedule_data = result['schedule']
+            metadata = result['metadata']
             
-            csv_content = '\n'.join(csv_lines)
-            
-            self.send_response(200)
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Content-Type', 'text/csv')
-            self.send_header('Content-Disposition', 'attachment; filename=schedule.csv')
-            self.send_header('X-Request-ID', request_id)
-            self.end_headers()
-            self.wfile.write(csv_content.encode('utf-8'))
+            # Handle different output formats
+            if format_type.lower() == 'json':
+                # JSON response with full metadata
+                response_data = {
+                    'schedule': schedule_data,
+                    'metadata': {
+                        **metadata,
+                        'generated_at': datetime.utcnow().isoformat(),
+                        'request_id': request_id,
+                        'input_summary': {
+                            'engineers': len(engineers),
+                            'weeks': weeks,
+                            'leave_entries': len(leave_data),
+                            'start_date': start_sunday.isoformat()
+                        }
+                    }
+                }
+                
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('X-Request-ID', request_id)
+                self.end_headers()
+                self.wfile.write(json.dumps(response_data, indent=2).encode('utf-8'))
+                
+            else:
+                # CSV format (default)
+                csv_lines = []
+                if schedule_data:
+                    csv_lines.append(','.join(schedule_data[0].keys()))
+                    for row in schedule_data:
+                        csv_lines.append(','.join(str(v) for v in row.values()))
+                    
+                    # Add warnings as comments at the end
+                    if metadata['warnings']:
+                        csv_lines.append('')
+                        csv_lines.append('# Warnings:')
+                        for warning in metadata['warnings']:
+                            csv_lines.append(f'# {warning}')
+                    
+                    # Add fairness summary
+                    if include_fairness and metadata.get('fairness'):
+                        csv_lines.append('')
+                        csv_lines.append('# Fairness Summary:')
+                        for role, metrics in metadata['fairness'].items():
+                            csv_lines.append(f'# {role}: {metrics["badge"]} (delta: {metrics["delta"]}, gini: {metrics["gini"]})')
+                
+                csv_content = '\n'.join(csv_lines)
+                
+                # Generate smart filename
+                filename = f"schedule_{start_sunday.strftime('%Y-%m-%d')}_{weeks}w_{len(engineers)}eng.csv"
+                
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Content-Type', 'text/csv')
+                self.send_header('Content-Disposition', f'attachment; filename={filename}')
+                self.send_header('X-Request-ID', request_id)
+                self.end_headers()
+                self.wfile.write(csv_content.encode('utf-8'))
             
         except Exception as e:
             self.send_error_response(500, f"Internal error: {str(e)}", request_id)
@@ -166,8 +213,142 @@ def get_early2_engineer_for_week(engineers: List[str], week_idx: int, weekend_se
     # Final fallback
     return early_rotation[week_idx % len(early_rotation)]
 
-def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], seeds: Dict[str,int], leave_data: List[Dict]) -> List[Dict]:
-    """Generate schedule"""
+def compute_role_assignments(team_size: int) -> Dict[str, int]:
+    """Compute role counts based on team size"""
+    if team_size <= 5:
+        return {
+            'oncall': 1,
+            'early_shifts': 1,  # Only Early1, no Early2
+            'contacts': 1,
+            'appointments': 1,
+            'min_tickets': max(1, team_size - 4)
+        }
+    elif team_size == 6:
+        return {
+            'oncall': 1,
+            'early_shifts': 2,  # Early1 + Early2
+            'contacts': 1,
+            'appointments': 1,
+            'min_tickets': 2
+        }
+    else:  # 7-8 engineers
+        return {
+            'oncall': 1,
+            'early_shifts': 2,
+            'contacts': 1,
+            'appointments': 1,
+            'min_tickets': team_size - 5
+        }
+
+def generate_warnings(team_size: int, role_config: Dict[str, int]) -> List[str]:
+    """Generate warnings about staffing levels"""
+    warnings = []
+    
+    if team_size <= 5:
+        warnings.append(f"Team size ({team_size}) is below optimal. Consider adding more engineers for better coverage.")
+        warnings.append("Early shift coverage reduced to single engineer due to limited staff.")
+    
+    if role_config['min_tickets'] < 2:
+        warnings.append("Limited ticket coverage - consider redistributing roles during high-demand periods.")
+    
+    return warnings
+
+def calculate_fairness_metrics(schedule_data: List[Dict], engineers: List[str]) -> Dict:
+    """Calculate fairness metrics for the schedule"""
+    from collections import Counter
+    import math
+    
+    # Count assignments per engineer per role
+    role_counts = {
+        'oncall_days': Counter(),
+        'early_shifts': Counter(),
+        'contacts_days': Counter(),
+        'appointments_days': Counter(),
+        'weekend_days': Counter(),
+        'tickets_days': Counter()
+    }
+    
+    for row in schedule_data:
+        # Count weekday roles
+        if row['Day'] in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']:
+            if row['OnCall']:
+                role_counts['oncall_days'][row['OnCall']] += 1
+            if row['Early1']:
+                role_counts['early_shifts'][row['Early1']] += 1
+            if row['Early2']:
+                role_counts['early_shifts'][row['Early2']] += 1
+            if row['Contacts']:
+                role_counts['contacts_days'][row['Contacts']] += 1
+            if row['Appointments']:
+                role_counts['appointments_days'][row['Appointments']] += 1
+            
+            # Count tickets
+            tickets_engineers = row.get('Tickets', '').split(', ') if row.get('Tickets') else []
+            for engineer in tickets_engineers:
+                if engineer.strip():
+                    role_counts['tickets_days'][engineer.strip()] += 1
+        
+        # Count weekend work
+        elif row['Day'] in ['Sat', 'Sun']:
+            for i in range(len(engineers)):
+                engineer = row.get(f'{i+1}) Engineer', '')
+                status = row.get(f'Status {i+1}', '')
+                if engineer and status == 'WORK':
+                    role_counts['weekend_days'][engineer] += 1
+    
+    # Calculate metrics for each role
+    fairness_report = {}
+    
+    for role, counts in role_counts.items():
+        if not counts:
+            continue
+            
+        # Ensure all engineers are represented
+        for engineer in engineers:
+            if engineer not in counts:
+                counts[engineer] = 0
+        
+        values = list(counts.values())
+        min_count = min(values)
+        max_count = max(values)
+        mean_count = sum(values) / len(values)
+        
+        # Calculate Gini coefficient
+        n = len(values)
+        if n > 1 and sum(values) > 0:
+            sorted_values = sorted(values)
+            cumsum = sum((i + 1) * val for i, val in enumerate(sorted_values))
+            gini = (2 * cumsum) / (n * sum(values)) - (n + 1) / n
+        else:
+            gini = 0
+        
+        # Determine fairness badge
+        delta = max_count - min_count
+        if delta <= 1:
+            badge = 'green'
+        elif delta <= 2:
+            badge = 'yellow'
+        else:
+            badge = 'red'
+        
+        fairness_report[role] = {
+            'counts': dict(counts),
+            'min': min_count,
+            'max': max_count,
+            'mean': round(mean_count, 1),
+            'delta': delta,
+            'gini': round(gini, 3),
+            'badge': badge
+        }
+    
+    return fairness_report
+
+def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], seeds: Dict[str,int], leave_data: List[Dict]) -> Dict:
+    """Generate schedule with variable team sizes and warnings"""
+    
+    team_size = len(engineers)
+    role_config = compute_role_assignments(team_size)
+    warnings = generate_warnings(team_size, role_config)
     
     weekend_seeded = build_rotation(engineers, seeds.get("weekend", 0))
     
@@ -231,11 +412,12 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
                 roles["Early1"] = week_oncall  # On-call engineer is always Early1
                 available.remove(week_oncall)
             
-            # 2. Second early shift engineer (weekly assignment)
-            week_early2 = weekly_early2.get(w, "")
-            if week_early2 in available:
-                roles["Early2"] = week_early2
-                available.remove(week_early2)
+            # 2. Second early shift engineer (weekly assignment) - only if team size allows
+            if role_config['early_shifts'] > 1:
+                week_early2 = weekly_early2.get(w, "")
+                if week_early2 in available:
+                    roles["Early2"] = week_early2
+                    available.remove(week_early2)
             
             # 3. Contacts (rotating daily)
             if available:
@@ -306,4 +488,15 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
         
         schedule_rows.append(row)
     
-    return schedule_rows
+    # Calculate fairness metrics
+    fairness_report = calculate_fairness_metrics(schedule_rows, engineers)
+    
+    return {
+        'schedule': schedule_rows,
+        'metadata': {
+            'team_size': team_size,
+            'role_config': role_config,
+            'warnings': warnings,
+            'fairness': fairness_report
+        }
+    }

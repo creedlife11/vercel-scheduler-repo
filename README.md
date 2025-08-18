@@ -13,9 +13,10 @@ A comprehensive team scheduling application built with Next.js frontend and Pyth
 
 ## 📋 Requirements
 
-- **Team Size**: Exactly 6 engineers required
+- **Team Size**: 5-8 engineers supported (optimal: 6-7)
 - **Schedule Pattern**: Week starts on Sunday with alternating weekend coverage
-- **Roles Covered**: On-Call (weekly), Contacts (daily), Appointments (daily), Early Shifts (2 engineers), Tickets (remaining)
+- **Roles Covered**: On-Call (weekly), Contacts (daily), Appointments (daily), Early Shifts (1-2 engineers), Tickets (remaining)
+- **Smart Scaling**: Role assignments automatically adjust based on team size
 
 ## 🛠️ Setup Instructions
 
@@ -90,12 +91,13 @@ Generates a team schedule based on provided parameters.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `engineers` | Array[String] | Yes | Exactly 6 engineer names |
+| `engineers` | Array[String] | Yes | 5-8 engineer names |
 | `start_sunday` | String | Yes | Start date in YYYY-MM-DD format (must be Sunday) |
 | `weeks` | Number | Yes | Number of weeks to schedule (1-52) |
 | `seeds` | Object | No | Rotation starting points for fair distribution |
 | `leave` | Array[Object] | No | Leave requests with Engineer, Date, Reason |
-| `format` | String | No | Export format: "csv" or "xlsx" (default: "csv") |
+| `format` | String | No | Export format: "csv" or "json" (default: "csv") |
+| `include_fairness` | Boolean | No | Include fairness analysis in CSV output |
 
 #### Response
 
@@ -112,6 +114,29 @@ Generates a team schedule based on provided parameters.
 Date,Day,WeekIndex,OnCall,Contacts,Appointments,Early1,Early2,Tickets,1) Engineer,Status 1,Assignment 1,Shift 1,...
 2025-08-10,Sun,0,,,,,,,Alice,WORK,Weekend Coverage,Weekend,...
 2025-08-11,Mon,0,Bob,Carol,Dan,Eve,Frank,Alice,Alice,WORK,Tickets,08:00-17:00,...
+
+# Warnings:
+# Team size (5) is below optimal. Consider adding more engineers for better coverage.
+# Fairness Summary:
+# oncall_days: green (delta: 1, gini: 0.067)
+```
+
+#### Example Response Structure (JSON)
+```json
+{
+  "schedule": [...],
+  "metadata": {
+    "team_size": 6,
+    "role_config": {"oncall": 1, "early_shifts": 2, "contacts": 1, "appointments": 1, "min_tickets": 2},
+    "warnings": [],
+    "fairness": {
+      "oncall_days": {"badge": "green", "delta": 1, "gini": 0.067, "counts": {...}},
+      "early_shifts": {"badge": "green", "delta": 0, "gini": 0.000, "counts": {...}}
+    },
+    "generated_at": "2025-01-20T10:30:00Z",
+    "request_id": "abc123"
+  }
+}
 ```
 
 ## 🔧 Configuration

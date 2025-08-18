@@ -10,9 +10,11 @@ export default function Home() {
   const [startDate, setStartDate] = useState('2025-08-10')
   const [weeks, setWeeks] = useState(8)
   const [format, setFormat] = useState('csv')
+  const [includeFairness, setIncludeFairness] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<ValidationError[]>([])
   const [apiError, setApiError] = useState<string>('')
+  const [lastResult, setLastResult] = useState<any>(null)
   const [seeds, setSeeds] = useState({
     weekend: 0,
     oncall: 1,
@@ -32,12 +34,25 @@ export default function Home() {
     setSeeds(prev => ({ ...prev, [key]: value }))
   }
 
+  const addEngineer = () => {
+    if (engineers.length < 8) {
+      setEngineers([...engineers, ''])
+    }
+  }
+
+  const removeEngineer = (index: number) => {
+    if (engineers.length > 5) {
+      const newEngineers = engineers.filter((_, i) => i !== index)
+      setEngineers(newEngineers)
+    }
+  }
+
   const validateForm = (): ValidationError[] => {
     const validationErrors: ValidationError[] = []
     
-    // Validate engineers
-    if (engineers.length !== 6) {
-      validationErrors.push({ field: 'engineers', message: 'Exactly 6 engineers are required' })
+    // Validate engineers (5-8 allowed)
+    if (engineers.length < 5 || engineers.length > 8) {
+      validationErrors.push({ field: 'engineers', message: 'Team size must be 5-8 engineers' })
     }
     
     engineers.forEach((engineer, index) => {
@@ -120,12 +135,13 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          engineers: engineers.map(e => e.trim()),
+          engineers: engineers.map(e => e.trim()).filter(e => e),
           start_sunday: startDate,
           weeks,
           seeds,
           leave: leaveData,
-          format
+          format,
+          include_fairness: includeFairness
         })
       })
 
@@ -144,15 +160,34 @@ export default function Home() {
         throw new Error(`${errorMessage}${errorDetails}${requestId}`)
       }
 
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `schedule.${format}`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      if (format === 'json') {
+        // Handle JSON response
+        const jsonData = await response.json()
+        setLastResult(jsonData)
+        
+        // Also download as file
+        const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' })
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `schedule_${startDate}_${weeks}w.json`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      } else {
+        // Handle CSV/other formats
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `schedule.${format}`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        setLastResult(null)
+      }
     } catch (error) {
       console.error('Error generating schedule:', error)
       setApiError(error instanceof Error ? error.message : 'Unknown error occurred')
@@ -166,18 +201,34 @@ export default function Home() {
       <h1>Team Scheduler</h1>
       
       <div style={{ marginBottom: '20px' }}>
-        <h3>Engineers (exactly 6 required)</h3>
+        <h3>Engineers (5-8 required)</h3>
         {engineers.map((engineer, index) => (
-          <div key={index} style={{ marginBottom: '10px' }}>
+          <div key={index} style={{ marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
             <label>Engineer {index + 1}: </label>
             <input
               type="text"
               value={engineer}
               onChange={(e) => handleEngineerChange(index, e.target.value)}
-              style={{ marginLeft: '10px', padding: '5px' }}
+              style={{ marginLeft: '10px', padding: '5px', flex: 1, maxWidth: '200px' }}
             />
+            {engineers.length > 5 && (
+              <button
+                onClick={() => removeEngineer(index)}
+                style={{ marginLeft: '10px', padding: '5px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '3px' }}
+              >
+                Remove
+              </button>
+            )}
           </div>
         ))}
+        {engineers.length < 8 && (
+          <button
+            onClick={addEngineer}
+            style={{ padding: '8px 15px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', marginTop: '10px' }}
+          >
+            Add Engineer
+          </button>
+        )}
       </div>
 
       <div style={{ marginBottom: '20px' }}>
@@ -210,8 +261,19 @@ export default function Home() {
             style={{ marginLeft: '10px', padding: '5px' }}
           >
             <option value="csv">CSV</option>
-            <option value="xlsx">Excel</option>
+            <option value="json">JSON (with metadata)</option>
           </select>
+        </div>
+        <div style={{ marginBottom: '10px' }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={includeFairness}
+              onChange={(e) => setIncludeFairness(e.target.checked)}
+              style={{ marginRight: '5px' }}
+            />
+            Include fairness analysis in CSV
+          </label>
         </div>
       </div>
 
@@ -294,15 +356,69 @@ export default function Home() {
         {loading ? 'Generating...' : 'Generate Schedule'}
       </button>
 
+      {/* Results Panel */}
+      {lastResult && (
+        <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: '5px' }}>
+          <h4>Schedule Generated Successfully!</h4>
+          
+          {lastResult.metadata?.warnings && lastResult.metadata.warnings.length > 0 && (
+            <div style={{ marginBottom: '15px' }}>
+              <h5 style={{ color: '#856404' }}>⚠️ Warnings:</h5>
+              <ul style={{ margin: '5px 0', paddingLeft: '20px' }}>
+                {lastResult.metadata.warnings.map((warning: string, index: number) => (
+                  <li key={index} style={{ color: '#856404' }}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {lastResult.metadata?.fairness && (
+            <div style={{ marginBottom: '15px' }}>
+              <h5>📊 Fairness Report:</h5>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                {Object.entries(lastResult.metadata.fairness).map(([role, metrics]: [string, any]) => (
+                  <div key={role} style={{ padding: '10px', backgroundColor: 'white', border: '1px solid #ddd', borderRadius: '3px' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
+                      {role.replace('_', ' ').toUpperCase()}
+                      <span style={{ 
+                        marginLeft: '5px', 
+                        padding: '2px 6px', 
+                        borderRadius: '3px', 
+                        fontSize: '12px',
+                        backgroundColor: metrics.badge === 'green' ? '#d4edda' : metrics.badge === 'yellow' ? '#fff3cd' : '#f8d7da',
+                        color: metrics.badge === 'green' ? '#155724' : metrics.badge === 'yellow' ? '#856404' : '#721c24'
+                      }}>
+                        {metrics.badge.toUpperCase()}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12px' }}>
+                      Range: {metrics.min}-{metrics.max} (Δ{metrics.delta})<br/>
+                      Gini: {metrics.gini}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            Generated {lastResult.metadata?.input_summary?.engineers} engineers × {lastResult.metadata?.input_summary?.weeks} weeks
+            {lastResult.metadata?.request_id && ` • Request ID: ${lastResult.metadata.request_id}`}
+          </div>
+        </div>
+      )}
+
       <div style={{ marginTop: '30px', fontSize: '14px', color: '#666' }}>
         <h4>How it works:</h4>
         <ul>
           <li>Week starts on Sunday</li>
+          <li>Team size: 5-8 engineers (optimal: 6-7)</li>
           <li>Weekend coverage alternates: Week A (Mon-Thu,Sat) vs Week B (Sun,Tue-Fri)</li>
           <li>Weekday roles: On-Call (weekly, 06:45-15:45), Early Shift 2 (weekly, 06:45-15:45), Contacts (daily), Appointments (daily)</li>
           <li>On-call and Early Shift 2 engineers cannot work weekend during their assigned week</li>
           <li>Remaining engineers work on Tickets (08:00-17:00)</li>
           <li>Seeds control rotation starting points for fair distribution</li>
+          <li>JSON format includes fairness analysis and detailed metadata</li>
         </ul>
       </div>
     </div>
