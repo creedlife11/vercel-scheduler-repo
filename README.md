@@ -166,6 +166,7 @@ Seeds control the starting position for each role rotation, ensuring fair distri
 3. **Constraints**:
    - On-call engineers cannot work weekends during their on-call week
    - Engineers on leave are automatically excluded from all assignments
+   - **No consecutive contacts days**: Engineers never work contacts on back-to-back weekdays
    - Fair rotation ensures balanced workload distribution
 
 ## 🧪 Testing

@@ -473,6 +473,9 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
     schedule_rows = []
     days = weeks * 7
     
+    # Track previous day's contacts assignment to prevent consecutive days
+    previous_contacts = None
+    
     for i in range(days):
         current_date = start_sunday + timedelta(days=i)
         w = week_index(start_sunday, current_date)
@@ -512,11 +515,24 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
                     roles["Early2"] = week_early2
                     available.remove(week_early2)
             
-            # 3. Contacts (rotating daily)
+            # 3. Contacts (rotating daily, no consecutive days)
             if available:
                 contacts_order = sorted(available, key=lambda name: ((engineers.index(name) + seeds.get("contacts", 0) + day_idx) % len(engineers)))
-                roles["Contacts"] = contacts_order[0]
-                available.remove(roles["Contacts"])
+                
+                # Find first available engineer who didn't work contacts yesterday
+                contacts_assigned = False
+                for candidate in contacts_order:
+                    if candidate != previous_contacts:
+                        roles["Contacts"] = candidate
+                        available.remove(candidate)
+                        contacts_assigned = True
+                        break
+                
+                # Fallback: if all available engineers worked contacts yesterday (shouldn't happen with proper rotation)
+                if not contacts_assigned and available:
+                    roles["Contacts"] = contacts_order[0]
+                    available.remove(roles["Contacts"])
+                    warnings.append(f"Date {current_date}: Had to assign {roles['Contacts']} to contacts on consecutive days due to limited availability")
             
             # 4. Appointments (rotating daily)
             if available:
@@ -578,6 +594,10 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
             row[f"Status {i+1}"] = status
             row[f"Assignment {i+1}"] = assignment
             row[f"Shift {i+1}"] = shift
+        
+        # Update previous contacts for next iteration (only for weekdays)
+        if is_weekday(current_date):
+            previous_contacts = roles["Contacts"]
         
         # Validate row integrity before adding
         validation_errors = validate_csv_row_integrity(row, team_size)

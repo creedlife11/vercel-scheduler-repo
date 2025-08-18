@@ -416,6 +416,7 @@ export default function Home() {
           <li>Weekend coverage alternates: Week A (Mon-Thu,Sat) vs Week B (Sun,Tue-Fri)</li>
           <li>Weekday roles: On-Call (weekly, 06:45-15:45), Early Shift 2 (weekly, 06:45-15:45), Contacts (daily), Appointments (daily)</li>
           <li>On-call and Early Shift 2 engineers cannot work weekend during their assigned week</li>
+          <li>Contacts engineer rotates daily with no consecutive day assignments</li>
           <li>Remaining engineers work on Tickets (08:00-17:00)</li>
           <li>Seeds control rotation starting points for fair distribution</li>
           <li>JSON format includes fairness analysis and detailed metadata</li>
