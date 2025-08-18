@@ -1,8 +1,26 @@
 from http.server import BaseHTTPRequestHandler
 import json
+import csv
+import io
 from datetime import datetime, date, timedelta
 from typing import List, Dict
 import uuid
+
+# Define canonical CSV schema to prevent column misalignment
+def get_csv_fieldnames(team_size: int) -> List[str]:
+    """Get canonical ordered fieldnames for CSV output"""
+    base_fields = ["Date", "Day", "WeekIndex", "OnCall", "Contacts", "Appointments", "Early1", "Early2", "Tickets"]
+    engineer_fields = []
+    
+    for i in range(1, team_size + 1):
+        engineer_fields.extend([
+            f"{i}) Engineer",
+            f"Status {i}",
+            f"Assignment {i}",
+            f"Shift {i}"
+        ])
+    
+    return base_fields + engineer_fields
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -92,28 +110,8 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps(response_data, indent=2).encode('utf-8'))
                 
             else:
-                # CSV format (default)
-                csv_lines = []
-                if schedule_data:
-                    csv_lines.append(','.join(schedule_data[0].keys()))
-                    for row in schedule_data:
-                        csv_lines.append(','.join(str(v) for v in row.values()))
-                    
-                    # Add warnings as comments at the end
-                    if metadata['warnings']:
-                        csv_lines.append('')
-                        csv_lines.append('# Warnings:')
-                        for warning in metadata['warnings']:
-                            csv_lines.append(f'# {warning}')
-                    
-                    # Add fairness summary
-                    if include_fairness and metadata.get('fairness'):
-                        csv_lines.append('')
-                        csv_lines.append('# Fairness Summary:')
-                        for role, metrics in metadata['fairness'].items():
-                            csv_lines.append(f'# {role}: {metrics["badge"]} (delta: {metrics["delta"]}, gini: {metrics["gini"]})')
-                
-                csv_content = '\n'.join(csv_lines)
+                # CSV format (default) - use schema-driven generation
+                csv_content = generate_csv_content(schedule_data, len(engineers), metadata, include_fairness)
                 
                 # Generate smart filename
                 filename = f"schedule_{start_sunday.strftime('%Y-%m-%d')}_{weeks}w_{len(engineers)}eng.csv"
@@ -343,6 +341,101 @@ def calculate_fairness_metrics(schedule_data: List[Dict], engineers: List[str]) 
     
     return fairness_report
 
+def generate_csv_content(schedule_data: List[Dict], team_size: int, metadata: Dict, include_fairness: bool = False) -> str:
+    """Generate CSV content with guaranteed column alignment"""
+    fieldnames = get_csv_fieldnames(team_size)
+    
+    # Use StringIO to build CSV content
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore', quoting=csv.QUOTE_MINIMAL)
+    
+    # Write header
+    writer.writeheader()
+    
+    # Write data rows with guaranteed field population
+    for row_data in schedule_data:
+        # Initialize row with all fields as empty strings
+        csv_row = {field: "" for field in fieldnames}
+        
+        # Populate base fields
+        csv_row["Date"] = row_data.get("Date", "")
+        csv_row["Day"] = row_data.get("Day", "")
+        csv_row["WeekIndex"] = str(row_data.get("WeekIndex", ""))
+        csv_row["OnCall"] = row_data.get("OnCall", "")
+        csv_row["Contacts"] = row_data.get("Contacts", "")
+        csv_row["Appointments"] = row_data.get("Appointments", "")
+        csv_row["Early1"] = row_data.get("Early1", "")
+        csv_row["Early2"] = row_data.get("Early2", "")
+        csv_row["Tickets"] = row_data.get("Tickets", "")
+        
+        # Populate engineer fields (guaranteed order)
+        for i in range(1, team_size + 1):
+            csv_row[f"{i}) Engineer"] = row_data.get(f"{i}) Engineer", "")
+            csv_row[f"Status {i}"] = row_data.get(f"Status {i}", "")
+            csv_row[f"Assignment {i}"] = row_data.get(f"Assignment {i}", "")
+            csv_row[f"Shift {i}"] = row_data.get(f"Shift {i}", "")
+        
+        writer.writerow(csv_row)
+    
+    # Add metadata as comments
+    csv_content = output.getvalue()
+    output.close()
+    
+    # Add warnings and fairness summary as comments
+    comments = []
+    
+    if metadata.get('warnings'):
+        comments.append('')
+        comments.append('# Warnings:')
+        for warning in metadata['warnings']:
+            comments.append(f'# {warning}')
+    
+    if include_fairness and metadata.get('fairness'):
+        comments.append('')
+        comments.append('# Fairness Summary:')
+        for role, metrics in metadata['fairness'].items():
+            comments.append(f'# {role}: {metrics["badge"]} (delta: {metrics["delta"]}, gini: {metrics["gini"]})')
+    
+    if comments:
+        csv_content += '\n'.join(comments)
+    
+    return csv_content
+
+def validate_csv_row_integrity(row_data: Dict, team_size: int) -> List[str]:
+    """Validate that a schedule row has proper structure"""
+    errors = []
+    
+    # Check required base fields
+    required_fields = ["Date", "Day", "WeekIndex"]
+    for field in required_fields:
+        if field not in row_data:
+            errors.append(f"Missing required field: {field}")
+    
+    # Check engineer fields
+    for i in range(1, team_size + 1):
+        engineer_field = f"{i}) Engineer"
+        status_field = f"Status {i}"
+        assignment_field = f"Assignment {i}"
+        shift_field = f"Shift {i}"
+        
+        if engineer_field not in row_data:
+            errors.append(f"Missing engineer field: {engineer_field}")
+        
+        if status_field in row_data:
+            status = row_data[status_field]
+            if status and status not in ["WORK", "OFF", "LEAVE"]:
+                errors.append(f"Invalid status '{status}' in {status_field}")
+        
+        if shift_field in row_data:
+            shift = row_data[shift_field]
+            if shift and shift not in ["Weekend", ""] and not (
+                len(shift.split('-')) == 2 and 
+                all(':' in part for part in shift.split('-'))
+            ):
+                errors.append(f"Invalid shift format '{shift}' in {shift_field}")
+    
+    return errors
+
 def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], seeds: Dict[str,int], leave_data: List[Dict]) -> Dict:
     """Generate schedule with variable team sizes and warnings"""
     
@@ -485,6 +578,11 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
             row[f"Status {i+1}"] = status
             row[f"Assignment {i+1}"] = assignment
             row[f"Shift {i+1}"] = shift
+        
+        # Validate row integrity before adding
+        validation_errors = validate_csv_row_integrity(row, team_size)
+        if validation_errors:
+            warnings.extend([f"Row {current_date}: {error}" for error in validation_errors])
         
         schedule_rows.append(row)
     
