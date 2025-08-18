@@ -1,11 +1,18 @@
 import { useState } from 'react'
 
+interface ValidationError {
+  field: string;
+  message: string;
+}
+
 export default function Home() {
   const [engineers, setEngineers] = useState(['Alice', 'Bob', 'Carol', 'Dan', 'Eve', 'Frank'])
   const [startDate, setStartDate] = useState('2025-08-10')
   const [weeks, setWeeks] = useState(8)
   const [format, setFormat] = useState('csv')
   const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState<ValidationError[]>([])
+  const [apiError, setApiError] = useState<string>('')
   const [seeds, setSeeds] = useState({
     weekend: 0,
     oncall: 1,
@@ -23,6 +30,55 @@ export default function Home() {
 
   const handleSeedChange = (key: string, value: number) => {
     setSeeds(prev => ({ ...prev, [key]: value }))
+  }
+
+  const validateForm = (): ValidationError[] => {
+    const validationErrors: ValidationError[] = []
+    
+    // Validate engineers
+    if (engineers.length !== 6) {
+      validationErrors.push({ field: 'engineers', message: 'Exactly 6 engineers are required' })
+    }
+    
+    engineers.forEach((engineer, index) => {
+      if (!engineer.trim()) {
+        validationErrors.push({ field: 'engineers', message: `Engineer ${index + 1} cannot be empty` })
+      } else if (engineer.trim().length > 50) {
+        validationErrors.push({ field: 'engineers', message: `Engineer ${index + 1} name too long (max 50 characters)` })
+      }
+    })
+    
+    // Check for duplicate engineers
+    const uniqueEngineers = new Set(engineers.map(e => e.trim().toLowerCase()))
+    if (uniqueEngineers.size !== engineers.length) {
+      validationErrors.push({ field: 'engineers', message: 'Engineer names must be unique' })
+    }
+    
+    // Validate start date
+    if (!startDate) {
+      validationErrors.push({ field: 'startDate', message: 'Start date is required' })
+    } else {
+      const date = new Date(startDate)
+      if (isNaN(date.getTime())) {
+        validationErrors.push({ field: 'startDate', message: 'Invalid date format' })
+      } else if (date.getDay() !== 0) {
+        validationErrors.push({ field: 'startDate', message: 'Start date must be a Sunday' })
+      }
+    }
+    
+    // Validate weeks
+    if (weeks < 1 || weeks > 52) {
+      validationErrors.push({ field: 'weeks', message: 'Weeks must be between 1 and 52' })
+    }
+    
+    // Validate seeds
+    Object.entries(seeds).forEach(([key, value]) => {
+      if (value < 0 || value > 5) {
+        validationErrors.push({ field: 'seeds', message: `${key} seed must be between 0 and 5` })
+      }
+    })
+    
+    return validationErrors
   }
 
   const parseLeaveData = (leaveText: string) => {
@@ -43,6 +99,17 @@ export default function Home() {
   }
 
   const generateSchedule = async () => {
+    // Clear previous errors
+    setErrors([])
+    setApiError('')
+    
+    // Validate form
+    const validationErrors = validateForm()
+    if (validationErrors.length > 0) {
+      setErrors(validationErrors)
+      return
+    }
+    
     setLoading(true)
     try {
       const leaveData = parseLeaveData(leave)
@@ -53,7 +120,7 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          engineers,
+          engineers: engineers.map(e => e.trim()),
           start_sunday: startDate,
           weeks,
           seeds,
@@ -63,7 +130,8 @@ export default function Home() {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error occurred' }))
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
       }
 
       const blob = await response.blob()
@@ -77,7 +145,7 @@ export default function Home() {
       document.body.removeChild(a)
     } catch (error) {
       console.error('Error generating schedule:', error)
-      alert('Error generating schedule. Please check the console for details.')
+      setApiError(error instanceof Error ? error.message : 'Unknown error occurred')
     } finally {
       setLoading(false)
     }
@@ -169,13 +237,44 @@ export default function Home() {
         />
       </div>
 
+      {/* Error Display */}
+      {errors.length > 0 && (
+        <div style={{ 
+          marginBottom: '20px', 
+          padding: '15px', 
+          backgroundColor: '#fee', 
+          border: '1px solid #fcc',
+          borderRadius: '5px'
+        }}>
+          <h4 style={{ margin: '0 0 10px 0', color: '#c33' }}>Validation Errors:</h4>
+          <ul style={{ margin: 0, paddingLeft: '20px' }}>
+            {errors.map((error, index) => (
+              <li key={index} style={{ color: '#c33' }}>{error.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {apiError && (
+        <div style={{ 
+          marginBottom: '20px', 
+          padding: '15px', 
+          backgroundColor: '#fee', 
+          border: '1px solid #fcc',
+          borderRadius: '5px'
+        }}>
+          <h4 style={{ margin: '0 0 10px 0', color: '#c33' }}>Error:</h4>
+          <p style={{ margin: 0, color: '#c33' }}>{apiError}</p>
+        </div>
+      )}
+
       <button
         onClick={generateSchedule}
         disabled={loading}
         style={{
           padding: '15px 30px',
           fontSize: '16px',
-          backgroundColor: loading ? '#ccc' : '#007cba',
+          backgroundColor: loading ? '#ccc' : (errors.length > 0 ? '#f39c12' : '#007cba'),
           color: 'white',
           border: 'none',
           borderRadius: '5px',

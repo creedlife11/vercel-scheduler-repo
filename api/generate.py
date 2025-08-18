@@ -1,7 +1,110 @@
 from http.server import BaseHTTPRequestHandler
 import json
+import re
 from datetime import datetime, date, timedelta
-from typing import List, Dict
+from typing import List, Dict, Tuple, Optional
+
+def validate_request_data(data: Dict) -> Tuple[bool, List[str]]:
+    """
+    Comprehensive validation of request data
+    Returns: (is_valid, list_of_errors)
+    """
+    errors = []
+    
+    # Validate engineers
+    engineers = data.get('engineers', [])
+    if not isinstance(engineers, list):
+        errors.append("Engineers must be a list")
+    elif len(engineers) != 6:
+        errors.append(f"Exactly 6 engineers are required, got {len(engineers)}")
+    else:
+        # Check individual engineer names
+        for i, engineer in enumerate(engineers):
+            if not isinstance(engineer, str):
+                errors.append(f"Engineer {i+1} must be a string")
+            elif not engineer.strip():
+                errors.append(f"Engineer {i+1} cannot be empty")
+            elif len(engineer.strip()) > 50:
+                errors.append(f"Engineer {i+1} name too long (max 50 characters)")
+        
+        # Check for duplicates
+        if len(set(engineer.strip() for engineer in engineers)) != len(engineers):
+            errors.append("Engineer names must be unique")
+    
+    # Validate start date
+    start_sunday_str = data.get('start_sunday', '')
+    if not isinstance(start_sunday_str, str):
+        errors.append("start_sunday must be a string")
+    elif not re.match(r'^\d{4}-\d{2}-\d{2}$', start_sunday_str):
+        errors.append("start_sunday must be in YYYY-MM-DD format")
+    else:
+        try:
+            start_date = datetime.strptime(start_sunday_str, '%Y-%m-%d').date()
+            if start_date.weekday() != 6:  # Sunday = 6
+                errors.append("start_sunday must be a Sunday")
+            # Check if date is reasonable (not too far in past/future)
+            today = date.today()
+            if start_date < today - timedelta(days=365):
+                errors.append("start_sunday cannot be more than 1 year in the past")
+            elif start_date > today + timedelta(days=730):
+                errors.append("start_sunday cannot be more than 2 years in the future")
+        except ValueError:
+            errors.append("Invalid start_sunday date")
+    
+    # Validate weeks
+    weeks = data.get('weeks', 0)
+    if not isinstance(weeks, int):
+        errors.append("weeks must be an integer")
+    elif weeks < 1 or weeks > 52:
+        errors.append("weeks must be between 1 and 52")
+    
+    # Validate seeds
+    seeds = data.get('seeds', {})
+    if not isinstance(seeds, dict):
+        errors.append("seeds must be an object")
+    else:
+        valid_seed_keys = {'weekend', 'oncall', 'contacts', 'appointments', 'early'}
+        for key, value in seeds.items():
+            if key not in valid_seed_keys:
+                errors.append(f"Invalid seed key: {key}")
+            elif not isinstance(value, int):
+                errors.append(f"Seed {key} must be an integer")
+            elif value < 0 or value > 5:
+                errors.append(f"Seed {key} must be between 0 and 5")
+    
+    # Validate leave data
+    leave_data = data.get('leave', [])
+    if not isinstance(leave_data, list):
+        errors.append("leave must be a list")
+    else:
+        for i, leave_entry in enumerate(leave_data):
+            if not isinstance(leave_entry, dict):
+                errors.append(f"Leave entry {i+1} must be an object")
+                continue
+            
+            engineer = leave_entry.get('Engineer', '')
+            if not isinstance(engineer, str) or not engineer.strip():
+                errors.append(f"Leave entry {i+1}: Engineer name is required")
+            
+            leave_date = leave_entry.get('Date', '')
+            if not isinstance(leave_date, str):
+                errors.append(f"Leave entry {i+1}: Date must be a string")
+            elif not re.match(r'^\d{4}-\d{2}-\d{2}$', leave_date):
+                errors.append(f"Leave entry {i+1}: Date must be in YYYY-MM-DD format")
+            else:
+                try:
+                    datetime.strptime(leave_date, '%Y-%m-%d')
+                except ValueError:
+                    errors.append(f"Leave entry {i+1}: Invalid date")
+    
+    # Validate format
+    format_type = data.get('format', 'csv')
+    if not isinstance(format_type, str):
+        errors.append("format must be a string")
+    elif format_type.lower() not in ['csv', 'xlsx']:
+        errors.append("format must be 'csv' or 'xlsx'")
+    
+    return len(errors) == 0, errors
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -12,44 +115,56 @@ class handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
     
+    def send_error_response(self, status_code: int, error_message: str, details: Optional[List[str]] = None):
+        """Send standardized error response"""
+        self.send_response(status_code)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        
+        error_data = {'error': error_message}
+        if details:
+            error_data['details'] = details
+        
+        self.wfile.write(json.dumps(error_data).encode())
+    
     def do_POST(self):
-        """Handle POST requests"""
+        """Handle POST requests with comprehensive validation"""
         try:
-            # Read request body
+            # Check content length
             content_length = int(self.headers.get('Content-Length', 0))
-            if content_length > 0:
+            if content_length == 0:
+                self.send_error_response(400, "Request body is required")
+                return
+            
+            if content_length > 1024 * 1024:  # 1MB limit
+                self.send_error_response(413, "Request body too large (max 1MB)")
+                return
+            
+            # Read and parse request body
+            try:
                 post_data = self.rfile.read(content_length)
                 data = json.loads(post_data.decode('utf-8'))
-            else:
-                data = {}
-        
-            # Extract parameters
-            engineers = data.get('engineers', [])
-            start_sunday_str = data.get('start_sunday', '')
-            weeks = data.get('weeks', 8)
+            except json.JSONDecodeError as e:
+                self.send_error_response(400, "Invalid JSON format", [str(e)])
+                return
+            except UnicodeDecodeError:
+                self.send_error_response(400, "Invalid character encoding")
+                return
+            
+            # Validate request data
+            is_valid, validation_errors = validate_request_data(data)
+            if not is_valid:
+                self.send_error_response(400, "Validation failed", validation_errors)
+                return
+            
+            # Extract validated parameters
+            engineers = [eng.strip() for eng in data['engineers']]
+            start_sunday = datetime.strptime(data['start_sunday'], '%Y-%m-%d').date()
+            weeks = data['weeks']
             seeds = data.get('seeds', {})
             leave_data = data.get('leave', [])
-            format_type = data.get('format', 'csv')
-            
-            # Validate engineers
-            if len(engineers) != 6:
-                self.send_response(400)
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': 'Exactly 6 engineers are required'}).encode())
-                return
-            
-            # Parse start date
-            try:
-                start_sunday = datetime.strptime(start_sunday_str, '%Y-%m-%d').date()
-            except ValueError:
-                self.send_response(400)
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': 'Invalid date format. Use YYYY-MM-DD'}).encode())
-                return
+            format_type = data.get('format', 'csv').lower()
             
             # Generate schedule
             schedule_data = make_schedule_simple(
@@ -192,17 +307,17 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
             available = working.copy()
             
             # 1. On-call engineer (same for entire week, cannot work weekend that week)
+            # On-call engineer always works early shift
             week_oncall = weekly_oncall.get(w, "")
             if week_oncall in available:
                 roles["OnCall"] = week_oncall
+                roles["Early1"] = week_oncall  # On-call engineer is always Early1
                 available.remove(week_oncall)
             
-            # 2. Early shifts (2 engineers)
+            # 2. Second early shift engineer
             if available:
                 early_order = sorted(available, key=lambda name: ((engineers.index(name) + seeds.get("early", 0) + day_idx) % len(engineers)))
-                roles["Early1"] = early_order[0] if len(early_order) >= 1 else ""
-                roles["Early2"] = early_order[1] if len(early_order) >= 2 else ""
-                if roles["Early1"]: available.remove(roles["Early1"])
+                roles["Early2"] = early_order[0] if len(early_order) >= 1 else ""
                 if roles["Early2"]: available.remove(roles["Early2"])
             
             # 3. Contacts (rotating daily)
