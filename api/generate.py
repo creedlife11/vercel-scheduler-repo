@@ -251,6 +251,25 @@ def get_oncall_engineer_for_week(engineers: List[str], week_idx: int, weekend_se
     # Fallback if all engineers are weekend workers (shouldn't happen with 6 engineers)
     return oncall_rotation[week_idx % len(oncall_rotation)]
 
+def get_early2_engineer_for_week(engineers: List[str], week_idx: int, weekend_seeded: List[str], oncall_engineer: str, seeds: Dict[str,int]) -> str:
+    """Get second early shift engineer for the week, ensuring they don't work weekend that week and aren't on-call"""
+    early_rotation = build_rotation(engineers, seeds.get("early", 0))
+    weekend_worker = weekend_worker_for_week(weekend_seeded, week_idx)
+    
+    # Find an engineer who is not the weekend worker and not the on-call engineer
+    for i in range(len(early_rotation)):
+        candidate = early_rotation[(week_idx + i) % len(early_rotation)]
+        if candidate != weekend_worker and candidate != oncall_engineer:
+            return candidate
+    
+    # Fallback - find any engineer who isn't on-call (even if they work weekend)
+    for engineer in early_rotation:
+        if engineer != oncall_engineer:
+            return engineer
+    
+    # Final fallback (shouldn't happen)
+    return early_rotation[week_idx % len(early_rotation)]
+
 def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], seeds: Dict[str,int], leave_data: List[Dict]) -> List[Dict]:
     """Generate schedule with updated requirements"""
     
@@ -272,10 +291,13 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
             except ValueError:
                 continue
     
-    # Pre-calculate weekly on-call assignments
+    # Pre-calculate weekly assignments
     weekly_oncall = {}
+    weekly_early2 = {}
     for w in range(weeks):
-        weekly_oncall[w] = get_oncall_engineer_for_week(engineers, w, weekend_seeded, seeds)
+        oncall_eng = get_oncall_engineer_for_week(engineers, w, weekend_seeded, seeds)
+        weekly_oncall[w] = oncall_eng
+        weekly_early2[w] = get_early2_engineer_for_week(engineers, w, weekend_seeded, oncall_eng, seeds)
     
     # Generate schedule
     schedule_rows = []
@@ -314,11 +336,11 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
                 roles["Early1"] = week_oncall  # On-call engineer is always Early1
                 available.remove(week_oncall)
             
-            # 2. Second early shift engineer
-            if available:
-                early_order = sorted(available, key=lambda name: ((engineers.index(name) + seeds.get("early", 0) + day_idx) % len(engineers)))
-                roles["Early2"] = early_order[0] if len(early_order) >= 1 else ""
-                if roles["Early2"]: available.remove(roles["Early2"])
+            # 2. Second early shift engineer (same for entire week)
+            week_early2 = weekly_early2.get(w, "")
+            if week_early2 in available:
+                roles["Early2"] = week_early2
+                available.remove(week_early2)
             
             # 3. Contacts (rotating daily)
             if available:
