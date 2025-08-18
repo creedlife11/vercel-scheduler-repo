@@ -1,135 +1,8 @@
 from http.server import BaseHTTPRequestHandler
 import json
-import re
-import time
-import uuid
-import logging
 from datetime import datetime, date, timedelta
-from typing import List, Dict, Tuple, Optional
-import sys
-import os
-
-# Try to import enhanced features, but work without them
-ENHANCED_FEATURES = False
-try:
-    # Add lib path for imports
-    sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'lib'))
-    from pydantic import ValidationError
-    from models import ScheduleRequest, ApiError, ScheduleMetadata, ScheduleResponse
-    from invariants import assert_schedule_invariants
-    ENHANCED_FEATURES = True
-except ImportError as e:
-    # Enhanced features not available, use basic functionality
-    ENHANCED_FEATURES = False
-
-# Simple logging setup
-def log_info(message):
-    print(f"INFO: {message}")
-
-def log_error(message):
-    print(f"ERROR: {message}")
-
-def validate_request_data(data: Dict) -> Tuple[bool, List[str]]:
-    """
-    Comprehensive validation of request data
-    Returns: (is_valid, list_of_errors)
-    """
-    errors = []
-    
-    # Validate engineers
-    engineers = data.get('engineers', [])
-    if not isinstance(engineers, list):
-        errors.append("Engineers must be a list")
-    elif len(engineers) != 6:
-        errors.append(f"Exactly 6 engineers are required, got {len(engineers)}")
-    else:
-        # Check individual engineer names
-        for i, engineer in enumerate(engineers):
-            if not isinstance(engineer, str):
-                errors.append(f"Engineer {i+1} must be a string")
-            elif not engineer.strip():
-                errors.append(f"Engineer {i+1} cannot be empty")
-            elif len(engineer.strip()) > 50:
-                errors.append(f"Engineer {i+1} name too long (max 50 characters)")
-        
-        # Check for duplicates
-        if len(set(engineer.strip() for engineer in engineers)) != len(engineers):
-            errors.append("Engineer names must be unique")
-    
-    # Validate start date
-    start_sunday_str = data.get('start_sunday', '')
-    if not isinstance(start_sunday_str, str):
-        errors.append("start_sunday must be a string")
-    elif not re.match(r'^\d{4}-\d{2}-\d{2}$', start_sunday_str):
-        errors.append("start_sunday must be in YYYY-MM-DD format")
-    else:
-        try:
-            start_date = datetime.strptime(start_sunday_str, '%Y-%m-%d').date()
-            if start_date.weekday() != 6:  # Sunday = 6
-                errors.append("start_sunday must be a Sunday")
-            # Check if date is reasonable (not too far in past/future)
-            today = date.today()
-            if start_date < today - timedelta(days=365):
-                errors.append("start_sunday cannot be more than 1 year in the past")
-            elif start_date > today + timedelta(days=730):
-                errors.append("start_sunday cannot be more than 2 years in the future")
-        except ValueError:
-            errors.append("Invalid start_sunday date")
-    
-    # Validate weeks
-    weeks = data.get('weeks', 0)
-    if not isinstance(weeks, int):
-        errors.append("weeks must be an integer")
-    elif weeks < 1 or weeks > 52:
-        errors.append("weeks must be between 1 and 52")
-    
-    # Validate seeds
-    seeds = data.get('seeds', {})
-    if not isinstance(seeds, dict):
-        errors.append("seeds must be an object")
-    else:
-        valid_seed_keys = {'weekend', 'oncall', 'contacts', 'appointments', 'early'}
-        for key, value in seeds.items():
-            if key not in valid_seed_keys:
-                errors.append(f"Invalid seed key: {key}")
-            elif not isinstance(value, int):
-                errors.append(f"Seed {key} must be an integer")
-            elif value < 0 or value > 5:
-                errors.append(f"Seed {key} must be between 0 and 5")
-    
-    # Validate leave data
-    leave_data = data.get('leave', [])
-    if not isinstance(leave_data, list):
-        errors.append("leave must be a list")
-    else:
-        for i, leave_entry in enumerate(leave_data):
-            if not isinstance(leave_entry, dict):
-                errors.append(f"Leave entry {i+1} must be an object")
-                continue
-            
-            engineer = leave_entry.get('Engineer', '')
-            if not isinstance(engineer, str) or not engineer.strip():
-                errors.append(f"Leave entry {i+1}: Engineer name is required")
-            
-            leave_date = leave_entry.get('Date', '')
-            if not isinstance(leave_date, str):
-                errors.append(f"Leave entry {i+1}: Date must be a string")
-            elif not re.match(r'^\d{4}-\d{2}-\d{2}$', leave_date):
-                errors.append(f"Leave entry {i+1}: Date must be in YYYY-MM-DD format")
-            else:
-                try:
-                    datetime.strptime(leave_date, '%Y-%m-%d')
-                except ValueError:
-                    errors.append(f"Leave entry {i+1}: Invalid date")
-    
-    # Validate format
-    format_type = data.get('format', 'csv')
-    if not isinstance(format_type, str):
-        errors.append("format must be a string")
-    elif format_type.lower() not in ['csv', 'xlsx']:
-        errors.append("format must be 'csv' or 'xlsx'")
-    
-    return len(errors) == 0, errors
+from typing import List, Dict
+import uuid
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -140,97 +13,47 @@ class handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
     
-    def send_error_response(self, status_code: int, error_code: str, error_message: str, 
-                           details: Optional[List[str]] = None, request_id: Optional[str] = None):
-        """Send standardized error response with proper structure"""
-        self.send_response(status_code)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        
-        error_data = {
-            'code': error_code,
-            'message': error_message,
-            'details': details or [],
-            'requestId': request_id or str(uuid.uuid4())
-        }
-        
-        self.wfile.write(json.dumps(error_data).encode())
-    
     def do_POST(self):
-        """Handle POST requests with comprehensive validation and observability"""
+        """Handle POST requests"""
         request_id = str(uuid.uuid4())
-        start_time = time.time()
-        
-        log_info(f"Request {request_id}: Starting schedule generation")
         
         try:
-            # Check content length
+            # Read request body
             content_length = int(self.headers.get('Content-Length', 0))
-            log_info(f"Request {request_id}: Content length: {content_length}")
-            
             if content_length == 0:
-                self.send_error_response(400, "MISSING_BODY", "Request body is required", request_id=request_id)
+                self.send_error_response(400, "Request body is required", request_id)
                 return
             
-            if content_length > 1024 * 1024:  # 1MB limit
-                self.send_error_response(413, "BODY_TOO_LARGE", "Request body too large (max 1MB)", request_id=request_id)
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            # Basic validation
+            engineers = data.get('engineers', [])
+            if len(engineers) != 6:
+                self.send_error_response(400, f"Exactly 6 engineers required, got {len(engineers)}", request_id)
                 return
             
-            # Read and parse request body
+            start_sunday_str = data.get('start_sunday', '')
+            if not start_sunday_str:
+                self.send_error_response(400, "start_sunday is required", request_id)
+                return
+            
             try:
-                post_data = self.rfile.read(content_length)
-                log_info(f"Request {request_id}: Read {len(post_data)} bytes")
-                data = json.loads(post_data.decode('utf-8'))
-                log_info(f"Request {request_id}: JSON parsed successfully")
-            except json.JSONDecodeError as e:
-                log_error(f"Request {request_id}: JSON decode error: {e}")
-                self.send_error_response(400, "INVALID_JSON", "Invalid JSON format", [str(e)], request_id)
-                return
-            except UnicodeDecodeError as e:
-                log_error(f"Request {request_id}: Unicode decode error: {e}")
-                self.send_error_response(400, "INVALID_ENCODING", "Invalid character encoding", [], request_id)
-                return
-            except Exception as e:
-                log_error(f"Request {request_id}: Unexpected error reading body: {e}")
-                self.send_error_response(400, "READ_ERROR", f"Error reading request body: {str(e)}", [], request_id)
+                start_sunday = datetime.strptime(start_sunday_str, '%Y-%m-%d').date()
+            except ValueError:
+                self.send_error_response(400, "Invalid date format. Use YYYY-MM-DD", request_id)
                 return
             
-            log_info(f"Request {request_id}: Parsed input - {len(data.get('engineers', []))} engineers, {data.get('weeks', 0)} weeks")
+            weeks = data.get('weeks', 8)
+            if not isinstance(weeks, int) or weeks < 1 or weeks > 52:
+                self.send_error_response(400, "weeks must be between 1 and 52", request_id)
+                return
             
-            # Enhanced validation with Pydantic if available
-            if ENHANCED_FEATURES:
-                try:
-                    request_model = ScheduleRequest(**data)
-                    engineers = request_model.engineers
-                    start_sunday = datetime.strptime(request_model.start_sunday, '%Y-%m-%d').date()
-                    weeks = request_model.weeks
-                    seeds = request_model.seeds.dict()
-                    leave_data = [entry.dict() for entry in request_model.leave]
-                    format_type = request_model.format
-                    random_seed = request_model.random_seed
-                except Exception as e:
-                    self.send_error_response(422, "VALIDATION_ERROR", f"Input validation failed: {str(e)}", [], request_id)
-                    return
-            else:
-                # Fallback to original validation
-                is_valid, validation_errors = validate_request_data(data)
-                if not is_valid:
-                    self.send_error_response(422, "VALIDATION_ERROR", "Input validation failed", validation_errors, request_id)
-                    return
-                
-                engineers = [eng.strip() for eng in data['engineers']]
-                start_sunday = datetime.strptime(data['start_sunday'], '%Y-%m-%d').date()
-                weeks = data['weeks']
-                seeds = data.get('seeds', {})
-                leave_data = data.get('leave', [])
-                format_type = data.get('format', 'csv').lower()
-                random_seed = None
+            seeds = data.get('seeds', {})
+            leave_data = data.get('leave', [])
+            format_type = data.get('format', 'csv')
             
-            # Generate schedule with timing
-            generation_start = time.time()
-            log_info(f"Request {request_id}: Starting schedule generation")
-            
+            # Generate schedule
             schedule_data = make_schedule_simple(
                 start_sunday=start_sunday,
                 weeks=weeks,
@@ -239,85 +62,41 @@ class handler(BaseHTTPRequestHandler):
                 leave_data=leave_data
             )
             
-            generation_time = time.time() - generation_start
-            log_info(f"Request {request_id}: Schedule generated in {generation_time:.3f}s")
+            # Return CSV
+            csv_lines = []
+            if schedule_data:
+                csv_lines.append(','.join(schedule_data[0].keys()))
+                for row in schedule_data:
+                    csv_lines.append(','.join(str(v) for v in row.values()))
             
-            # Verify invariants if available
-            warnings = []
-            if ENHANCED_FEATURES:
-                try:
-                    # Convert leave data to map format for invariant checking
-                    leave_map = {engineer: set() for engineer in engineers}
-                    for entry in leave_data:
-                        engineer = entry['Engineer']
-                        leave_date = datetime.strptime(entry['Date'], '%Y-%m-%d').date()
-                        leave_map[engineer].add(leave_date)
-                    
-                    assert_schedule_invariants(schedule_data, engineers, start_sunday, weeks, leave_map)
-                    log_info(f"Request {request_id}: All invariants verified")
-                except Exception as e:
-                    warnings.append(f"Invariant verification failed: {str(e)}")
-                    log_error(f"Request {request_id}: Invariant check failed: {e}")
+            csv_content = '\n'.join(csv_lines)
             
-            # Handle different output formats
-            if format_type == 'json':
-                # JSON response with metadata
-                processing_time = (time.time() - start_time) * 1000
-                
-                response_data = {
-                    'data': schedule_data,
-                    'metadata': {
-                        'requestId': request_id,
-                        'generatedAt': datetime.utcnow().isoformat(),
-                        'inputSummary': {
-                            'engineers': len(engineers),
-                            'weeks': weeks,
-                            'leave_entries': len(leave_data)
-                        },
-                        'warnings': warnings,
-                        'processingTimeMs': processing_time,
-                        'enhancedFeatures': ENHANCED_FEATURES
-                    }
-                }
-                
-                self.send_response(200)
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('X-Request-ID', request_id)
-                self.end_headers()
-                self.wfile.write(json.dumps(response_data).encode('utf-8'))
-                
-            else:
-                # CSV response (default)
-                csv_lines = []
-                if schedule_data:
-                    # Header
-                    csv_lines.append(','.join(schedule_data[0].keys()))
-                    # Data rows
-                    for row in schedule_data:
-                        csv_lines.append(','.join(str(v) for v in row.values()))
-                
-                csv_content = '\n'.join(csv_lines)
-                
-                # Generate filename with date
-                filename = f"schedule_{start_sunday.strftime('%Y-%m-%d')}_w{weeks}.csv"
-                
-                self.send_response(200)
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Content-Type', 'text/csv')
-                self.send_header('Content-Disposition', f'attachment; filename={filename}')
-                self.send_header('X-Request-ID', request_id)
-                self.end_headers()
-                self.wfile.write(csv_content.encode('utf-8'))
-            
-            processing_time = (time.time() - start_time) * 1000
-            log_info(f"Request {request_id}: Completed in {processing_time:.1f}ms")
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Type', 'text/csv')
+            self.send_header('Content-Disposition', 'attachment; filename=schedule.csv')
+            self.send_header('X-Request-ID', request_id)
+            self.end_headers()
+            self.wfile.write(csv_content.encode('utf-8'))
             
         except Exception as e:
-            processing_time = (time.time() - start_time) * 1000
-            log_error(f"Request {request_id}: Failed after {processing_time:.1f}ms: {e}")
-            self.send_error_response(500, "INTERNAL_ERROR", f"Internal server error: {str(e)}", [], request_id)
+            self.send_error_response(500, f"Internal error: {str(e)}", request_id)
+    
+    def send_error_response(self, status_code: int, message: str, request_id: str):
+        """Send error response"""
+        self.send_response(status_code)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        
+        error_data = {
+            'error': message,
+            'requestId': request_id
+        }
+        
+        self.wfile.write(json.dumps(error_data).encode())
 
+# Scheduling functions
 def build_rotation(engineers: List[str], seed: int = 0) -> List[str]:
     """Build rotation starting from seed position"""
     seed = seed % len(engineers)
@@ -369,7 +148,7 @@ def get_oncall_engineer_for_week(engineers: List[str], week_idx: int, weekend_se
     return oncall_rotation[week_idx % len(oncall_rotation)]
 
 def get_early2_engineer_for_week(engineers: List[str], week_idx: int, weekend_seeded: List[str], oncall_engineer: str, seeds: Dict[str,int]) -> str:
-    """Get second early shift engineer for the week, ensuring they don't work weekend that week and aren't on-call"""
+    """Get second early shift engineer for the week"""
     early_rotation = build_rotation(engineers, seeds.get("early", 0))
     weekend_worker = weekend_worker_for_week(weekend_seeded, week_idx)
     
@@ -379,16 +158,16 @@ def get_early2_engineer_for_week(engineers: List[str], week_idx: int, weekend_se
         if candidate != weekend_worker and candidate != oncall_engineer:
             return candidate
     
-    # Fallback - find any engineer who isn't on-call (even if they work weekend)
+    # Fallback - find any engineer who isn't on-call
     for engineer in early_rotation:
         if engineer != oncall_engineer:
             return engineer
     
-    # Final fallback (shouldn't happen)
+    # Final fallback
     return early_rotation[week_idx % len(early_rotation)]
 
 def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], seeds: Dict[str,int], leave_data: List[Dict]) -> List[Dict]:
-    """Generate schedule with updated requirements"""
+    """Generate schedule"""
     
     weekend_seeded = build_rotation(engineers, seeds.get("weekend", 0))
     
@@ -445,15 +224,14 @@ def make_schedule_simple(start_sunday: date, weeks: int, engineers: List[str], s
             day_idx = (current_date - start_sunday).days
             available = working.copy()
             
-            # 1. On-call engineer (same for entire week, cannot work weekend that week)
-            # On-call engineer always works early shift
+            # 1. On-call engineer (weekly assignment)
             week_oncall = weekly_oncall.get(w, "")
             if week_oncall in available:
                 roles["OnCall"] = week_oncall
                 roles["Early1"] = week_oncall  # On-call engineer is always Early1
                 available.remove(week_oncall)
             
-            # 2. Second early shift engineer (same for entire week)
+            # 2. Second early shift engineer (weekly assignment)
             week_early2 = weekly_early2.get(w, "")
             if week_early2 in available:
                 roles["Early2"] = week_early2
