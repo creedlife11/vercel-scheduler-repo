@@ -98,7 +98,7 @@ export function AuthWrapper({
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <h2 style={{ margin: 0, fontSize: 18 }}>Team Scheduler</h2>
-            {session.user.teams && session.user.teams.length > 0 && (
+            {session?.user?.teams && session.user.teams.length > 0 && (
               <select style={{
                 padding: "4px 8px",
                 border: "1px solid #d1d5db",

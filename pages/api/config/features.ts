@@ -232,11 +232,35 @@ export default async function handler(
   } catch (error) {
     console.error('Feature config API error:', error);
     
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to load feature configuration',
+    // Return safe defaults instead of 500 to keep UI alive
+    const safeDefaults: ApiResponse = {
+      features: {
+        enableFairnessReporting: { enabled: true, description: 'Safe default' },
+        enableDecisionLogging: { enabled: true, description: 'Safe default' },
+        enableAdvancedValidation: { enabled: true, description: 'Safe default' },
+        enablePerformanceMonitoring: { enabled: false, description: 'Safe default' },
+        enableInvariantChecking: { enabled: true, description: 'Safe default' },
+        enableArtifactPanel: { enabled: true, description: 'Safe default' },
+        enableLeaveManagement: { enabled: true, description: 'Safe default' },
+        enablePresetManager: { enabled: true, description: 'Safe default' },
+        enableAuthenticationSystem: { enabled: false, description: 'Safe default' },
+        enableRateLimiting: { enabled: false, description: 'Safe default' },
+        enableTeamStorage: { enabled: false, description: 'Safe default' },
+        enableArtifactSharing: { enabled: false, description: 'Safe default' },
+        enableExperimentalFeatures: { enabled: false, description: 'Safe default' },
+        enableAdvancedAnalytics: { enabled: false, description: 'Safe default' },
+        maxWeeksAllowed: 52,
+        fairnessThreshold: 0.8,
+        maxRequestSizeMB: 2.0,
+        enableDarkMode: { enabled: false, description: 'Safe default' },
+        enableKeyboardShortcuts: { enabled: false, description: 'Safe default' },
+        enableTooltips: { enabled: false, description: 'Safe default' }
+      },
+      environment: 'unknown',
       timestamp: new Date().toISOString()
-    });
+    };
+    
+    res.status(200).json(safeDefaults);
   }
 }
 
