@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { validateCompleteForm } from "../lib/validation";
+import { validateCompleteForm, ValidationResult } from "../lib/validation";
 import { EngineerInput } from "../lib/components/EngineerInput";
 import { SmartDatePicker } from "../lib/components/SmartDatePicker";
 import { WeeksInput } from "../lib/components/WeeksInput";
@@ -23,7 +23,7 @@ export default function Home() {
   const [seeds, setSeeds] = useState({ weekend: 0, chat: 0, oncall: 1, appointments: 2, early: 0 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [formValidation, setFormValidation] = useState({ isValid: false, errors: [], warnings: [] });
+  const [formValidation, setFormValidation] = useState<ValidationResult>({ isValid: false, errors: [], warnings: [] });
   const [artifactData, setArtifactData] = useState<any>(null);
   const [showArtifactPanel, setShowArtifactPanel] = useState(false);
   const [leave, setLeave] = useState<Array<{engineer: string, date: string, reason: string}>>([]);
@@ -48,7 +48,7 @@ export default function Home() {
     
     const validation = validateCompleteForm(payload);
     setFormValidation(validation);
-  }, [engineers, startSunday, weeks, seeds, format]);
+  }, [engineers, startSunday, weeks, seeds, format, leave]);
 
   const handleGenerate = async () => {
     setBusy(true); 
