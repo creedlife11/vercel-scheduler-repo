@@ -1,6 +1,6 @@
 import { useSession, signOut } from "next-auth/react"
 import { useRouter } from "next/router"
-import { useEffect, ReactNode } from "react"
+import { useEffect, useState, ReactNode } from "react"
 
 interface AuthWrapperProps {
   children: ReactNode

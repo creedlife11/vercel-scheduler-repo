@@ -24,19 +24,21 @@ export default function SignIn({ providers }: SignInProps) {
         email,
         password,
         redirect: false,
+        callbackUrl: "/"
       })
 
       console.log('Sign in result:', result);
       
       if (result?.error) {
-        setError("Invalid credentials")
+        setError("Invalid credentials. Try demo@example.com / demo123")
       } else if (result?.ok) {
-        // Successful login, redirect to home
-        window.location.href = "/"
+        // Successful login, force a full page reload to ensure session is loaded
+        window.location.href = result.url || "/"
       } else {
         setError("Sign in failed")
       }
     } catch (err) {
+      console.error('Sign in error:', err);
       setError("Sign in failed")
     } finally {
       setLoading(false)
@@ -182,9 +184,15 @@ export default function SignIn({ providers }: SignInProps) {
         textAlign: "center", 
         marginTop: 20, 
         fontSize: 12, 
-        color: "#6b7280" 
+        color: "#6b7280",
+        backgroundColor: "#f3f4f6",
+        padding: "12px",
+        borderRadius: "6px"
       }}>
-        Demo credentials: any email with password &quot;demo123&quot;
+        <strong>Demo Accounts:</strong><br/>
+        • demo@example.com / demo123 (Admin)<br/>
+        • editor@example.com / editor123 (Editor)<br/>
+        • user@example.com / user123 (Viewer)
       </div>
     </div>
   )
