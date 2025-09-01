@@ -1,11 +1,4 @@
 {
-  "functions": {
-    "api/*.py": {
-      "runtime": "python3.11",
-      "maxDuration": 30,
-      "memory": 1024
-    }
-  },
   "headers": [
     {
       "source": "/api/(.*)",
@@ -52,9 +45,7 @@
       "destination": "/api/readyz"
     }
   ],
-  "env": {
-    "VERCEL_ENV": "@vercel-env"
-  },
+
   "regions": ["iad1"],
   "framework": "nextjs"
 }

@@ -44,7 +44,7 @@ export default async function handler(
     // Get user session for user-specific feature flags
     const session = await getServerSession(req, res, authOptions);
     const userId = session?.user?.id || null;
-    const userGroups = session?.user?.groups || [];
+    // const userGroups = session?.user?.groups || [];
 
     // Get environment
     const environment = process.env.VERCEL_ENV || 'development';

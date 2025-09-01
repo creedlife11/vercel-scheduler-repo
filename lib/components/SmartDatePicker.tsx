@@ -17,7 +17,7 @@ export const SmartDatePicker: React.FC<SmartDatePickerProps> = ({
   label = "Start Sunday",
   className = ""
 }) => {
-  const [validation, setValidation] = useState({ isValid: true, errors: [], warnings: [] });
+  const [validation, setValidation] = useState<{ isValid: boolean; errors: string[]; warnings: string[] }>({ isValid: true, errors: [], warnings: [] });
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   useEffect(() => {

@@ -17,8 +17,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       case 'list':
         return handleListArtifacts(req, res, session.user)
       case 'get':
+        if (!rest[0]) {
+          return res.status(400).json({ error: 'Artifact ID required' })
+        }
         return handleGetArtifact(req, res, session.user, rest[0])
       case 'delete':
+        if (!rest[0]) {
+          return res.status(400).json({ error: 'Artifact ID required' })
+        }
         return handleDeleteArtifact(req, res, session.user, rest[0])
       default:
         return res.status(404).json({ error: 'Endpoint not found' })

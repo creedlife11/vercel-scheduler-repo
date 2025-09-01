@@ -17,7 +17,7 @@ export const EngineerInput: React.FC<EngineerInputProps> = ({
   placeholder = "Engineer A, Engineer B, Engineer C, Engineer D, Engineer E, Engineer F",
   className = ""
 }) => {
-  const [validation, setValidation] = useState({ isValid: true, errors: [], warnings: [] });
+  const [validation, setValidation] = useState<{ isValid: boolean; errors: string[]; warnings: string[] }>({ isValid: true, errors: [], warnings: [] });
   const [engineerCount, setEngineerCount] = useState(0);
 
   useEffect(() => {
@@ -34,9 +34,9 @@ export const EngineerInput: React.FC<EngineerInputProps> = ({
     }
   }, [value]);
 
-  const handlePaste = (e: React.ClipboardEvent) => {
-    // Allow normal paste behavior, validation will handle the result
-  };
+  // const handlePaste = (_e: React.ClipboardEvent) => {
+  //   // Allow normal paste behavior, validation will handle the result
+  // };
 
   const getCounterColor = () => {
     if (engineerCount === 6) return '#059669'; // green
@@ -63,7 +63,7 @@ export const EngineerInput: React.FC<EngineerInputProps> = ({
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onPaste={handlePaste}
+
         placeholder={placeholder}
         rows={3}
         className={`textarea ${validation.errors.length > 0 ? 'error' : ''}`}

@@ -9,7 +9,6 @@ import { LeaveManager } from "../lib/components/LeaveManager";
 import { PresetManager } from "../lib/components/PresetManager";
 import { AuthWrapper } from "../lib/components/AuthWrapper";
 import { 
-  useFeatureFlags,
   useIsArtifactPanelEnabled,
   useIsLeaveManagementEnabled,
   useIsPresetManagerEnabled,
@@ -30,7 +29,7 @@ export default function Home() {
   const [leave, setLeave] = useState<Array<{engineer: string, date: string, reason: string}>>([]);
 
   // Feature flags
-  const { features, loading: featuresLoading } = useFeatureFlags();
+  // const { loading: featuresLoading } = useFeatureFlags();
   const isArtifactPanelEnabled = useIsArtifactPanelEnabled();
   const isLeaveManagementEnabled = useIsLeaveManagementEnabled();
   const isPresetManagerEnabled = useIsPresetManagerEnabled();

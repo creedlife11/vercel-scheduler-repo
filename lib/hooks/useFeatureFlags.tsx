@@ -3,7 +3,7 @@
  * Provides type-safe access to feature toggles with caching and error handling.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 export interface FeatureFlag {
   enabled: boolean;
@@ -164,7 +164,7 @@ export function useFeatureFlags(): UseFeatureFlagsReturn {
     return Boolean(flag);
   }, [features]);
 
-  const getValue = useCallback(<T>(flagName: keyof FeatureConfig, defaultValue: T): T => {
+  const getValue = useCallback(<T extends any>(flagName: keyof FeatureConfig, defaultValue: T): T => {
     if (!features) return defaultValue;
     
     const value = features[flagName];

@@ -179,7 +179,7 @@ export default function SignIn({ providers }: SignInProps) {
         fontSize: 12, 
         color: "#6b7280" 
       }}>
-        Demo credentials: any email with password "demo123"
+        Demo credentials: any email with password &quot;demo123&quot;
       </div>
     </div>
   )

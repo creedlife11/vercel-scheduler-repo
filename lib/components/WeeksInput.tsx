@@ -15,7 +15,7 @@ export const WeeksInput: React.FC<WeeksInputProps> = ({
   label = "Weeks",
   className = ""
 }) => {
-  const [validation, setValidation] = useState({ isValid: true, errors: [], warnings: [] });
+  const [validation, setValidation] = useState<{ isValid: boolean; errors: string[]; warnings: string[] }>({ isValid: true, errors: [], warnings: [] });
 
   useEffect(() => {
     const result = validateWeeksInput(value);
