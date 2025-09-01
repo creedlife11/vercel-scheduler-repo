@@ -1,52 +1,36 @@
 {
-
+  "functions": {
+    "pages/api/**/*.ts": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/emergency",
+      "destination": "/working-scheduler"
+    },
+    {
+      "source": "/simple",
+      "destination": "/simple-index"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
         {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
         },
         {
-          "key": "X-Frame-Options",
-          "value": "DENY"
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
         },
         {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        },
-        {
-          "key": "Referrer-Policy",
-          "value": "strict-origin-when-cross-origin"
-        },
-        {
-          "key": "Permissions-Policy",
-          "value": "camera=(), microphone=(), geolocation=()"
-        }
-      ]
-    },
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Strict-Transport-Security",
-          "value": "max-age=31536000; includeSubDomains"
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
         }
       ]
     }
-  ],
-  "rewrites": [
-    {
-      "source": "/health",
-      "destination": "/api/healthz"
-    },
-    {
-      "source": "/ready",
-      "destination": "/api/readyz"
-    }
-  ],
-
-  "regions": ["iad1"],
-  "framework": "nextjs"
+  ]
 }
