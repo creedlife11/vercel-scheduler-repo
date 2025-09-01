@@ -301,7 +301,7 @@ export const snapToNextSunday = (dateStr: string): string => {
   }
 };
 
-export const validateWeeksInput = (weeks: number): ValidationResult => {
+export const validateWeeksInput = (weeks: number, maxWeeks: number = 52): ValidationResult => {
   if (!Number.isInteger(weeks)) {
     return {
       isValid: false,
@@ -318,10 +318,10 @@ export const validateWeeksInput = (weeks: number): ValidationResult => {
     };
   }
   
-  if (weeks > 52) {
+  if (weeks > maxWeeks) {
     return {
       isValid: false,
-      errors: ['Maximum 52 weeks allowed'],
+      errors: [`Maximum ${maxWeeks} weeks allowed`],
       warnings: []
     };
   }

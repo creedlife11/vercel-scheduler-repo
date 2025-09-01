@@ -7,20 +7,22 @@ interface WeeksInputProps {
   onChange: (value: number) => void;
   label?: string;
   className?: string;
+  maxWeeks?: number;
 }
 
 export const WeeksInput: React.FC<WeeksInputProps> = ({
   value,
   onChange,
   label = "Weeks",
-  className = ""
+  className = "",
+  maxWeeks = 52
 }) => {
   const [validation, setValidation] = useState<{ isValid: boolean; errors: string[]; warnings: string[] }>({ isValid: true, errors: [], warnings: [] });
 
   useEffect(() => {
-    const result = validateWeeksInput(value);
+    const result = validateWeeksInput(value, maxWeeks);
     setValidation(result);
-  }, [value]);
+  }, [value, maxWeeks]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = parseInt(e.target.value) || 1;
