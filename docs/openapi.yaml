@@ -1,0 +1,1116 @@
+openapi: 3.0.3
+info:
+  title: Team Scheduler API
+  description: |
+    Enhanced team scheduler API with robust testing, improved data integrity, 
+    better UX, and enterprise-grade reliability features. The API provides 
+    comprehensive schedule generation with fairness analysis, decision logging, 
+    and multi-format exports.
+    
+    ## Features
+    - **Multi-format exports**: CSV, XLSX, and JSON formats
+    - **Fairness analysis**: Gini coefficient and role distribution metrics
+    - **Decision logging**: Transparent scheduling rationale
+    - **Dual validation**: Frontend (Zod) and backend (Pydantic) validation
+    - **Authentication**: Role-based access control (Viewer/Editor/Admin)
+    - **Rate limiting**: Per-user request limits
+    - **Monitoring**: Health checks and performance metrics
+    
+    ## Authentication
+    All endpoints except health checks require authentication via Auth.js/NextAuth.
+    Users must have appropriate roles:
+    - **Viewer**: Read-only access to artifacts
+    - **Editor**: Can generate schedules and manage artifacts
+    - **Admin**: Full access including metrics and system management
+    
+    ## Rate Limits
+    - **Editors**: 50 requests per hour
+    - **Admins**: 200 requests per hour
+    - **Health endpoints**: 1000 requests per hour
+    - **Metrics**: 100 requests per hour (Admin only)
+    
+    ## Error Handling
+    The API uses structured error responses with detailed field-level validation errors.
+    All errors include a `request_id` for debugging and support.
+  version: 2.0.0
+  contact:
+    name: Team Scheduler Support
+    url: https://github.com/your-org/team-scheduler
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://your-scheduler.vercel.app/api
+    description: Production server
+  - url: http://localhost:3000/api
+    description: Development server
+
+paths:
+  /generate:
+    post:
+      summary: Generate team schedule
+      description: |
+        Generates a team schedule based on provided parameters including engineers,
+        date range, rotation seeds, and leave entries. Returns the schedule in the
+        requested format (CSV, XLSX, or JSON) with fairness analysis and decision logging.
+        
+        ## Features
+        - Validates all inputs using Pydantic models
+        - Ensures Sunday start dates (auto-snaps if needed)
+        - Handles leave conflicts with intelligent backfill
+        - Generates fairness reports with Gini coefficient
+        - Logs all scheduling decisions with rationale
+        - Supports multiple export formats from single JSON source
+        
+        ## Validation Rules
+        - Exactly 6 engineers required
+        - Engineer names must be unique (case-insensitive)
+        - Start date must be a Sunday
+        - Maximum 52 weeks allowed
+        - Leave entries must reference valid engineers
+      operationId: generateSchedule
+      tags:
+        - Schedule Generation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleRequest'
+            examples:
+              basic_request:
+                summary: Basic schedule request
+                value:
+                  engineers: ["Alice Johnson", "Bob Smith", "Carol Davis", "David Wilson", "Eve Brown", "Frank Miller"]
+                  start_sunday: "2025-01-05"
+                  weeks: 4
+                  format: "csv"
+              with_leave:
+                summary: Request with leave entries
+                value:
+                  engineers: ["Alice Johnson", "Bob Smith", "Carol Davis", "David Wilson", "Eve Brown", "Frank Miller"]
+                  start_sunday: "2025-01-05"
+                  weeks: 8
+                  seeds:
+                    weekend: 1
+                    chat: 2
+                    oncall: 0
+                    appointments: 3
+                    early: 1
+                  leave:
+                    - engineer: "Alice Johnson"
+                      date: "2025-01-15"
+                      reason: "Vacation"
+                    - engineer: "Bob Smith"
+                      date: "2025-01-22"
+                      reason: "Conference"
+                  format: "xlsx"
+              json_export:
+                summary: JSON export with full data
+                value:
+                  engineers: ["Alice Johnson", "Bob Smith", "Carol Davis", "David Wilson", "Eve Brown", "Frank Miller"]
+                  start_sunday: "2025-01-05"
+                  weeks: 6
+                  format: "json"
+      responses:
+        '200':
+          description: Schedule generated successfully
+          headers:
+            X-Request-ID:
+              description: Unique request identifier for debugging
+              schema:
+                type: string
+                format: uuid
+            X-RateLimit-Remaining:
+              description: Number of requests remaining in current window
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              description: Unix timestamp when rate limit resets
+              schema:
+                type: integer
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+              example: |
+                # Schema Version: 2.0
+                # Generated: 2025-01-09T10:30:00Z
+                # Configuration: default, 6 engineers, 4 weeks
+                Date,Day,WeekIndex,Early1,Early2,Chat,OnCall,Appointments,1) Alice Johnson,Status 1,Shift 1,2) Bob Smith,Status 2,Shift 2,3) Carol Davis,Status 3,Shift 3,4) David Wilson,Status 4,Shift 4,5) Eve Brown,Status 5,Shift 5,6) Frank Miller,Status 6,Shift 6
+                2025-01-05,Sun,0,,,,,,,OFF,,Bob Smith,WORK,Weekend,,,,,
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleResponse'
+              example:
+                schemaVersion: "2.0"
+                metadata:
+                  generation_timestamp: "2025-01-09T10:30:00Z"
+                  configuration:
+                    engineers: 6
+                    weeks: 4
+                    format: "json"
+                  engineer_count: 6
+                  weeks: 4
+                  start_date: "2025-01-05"
+                  end_date: "2025-02-01"
+                  total_days: 28
+                schedule:
+                  - date: "2025-01-05"
+                    day: "Sun"
+                    week_index: 0
+                    early1: ""
+                    early2: ""
+                    chat: ""
+                    oncall: ""
+                    appointments: ""
+                    engineers:
+                      - name: "Alice Johnson"
+                        status: "OFF"
+                        shift: ""
+                      - name: "Bob Smith"
+                        status: "WORK"
+                        shift: "Weekend"
+                fairnessReport:
+                  engineer_stats:
+                    "Alice Johnson":
+                      name: "Alice Johnson"
+                      oncall_count: 4
+                      weekend_count: 2
+                      early_count: 3
+                      chat_count: 4
+                      appointments_count: 3
+                      total_work_days: 20
+                      leave_days: 1
+                  equity_score: 0.12
+                  max_min_deltas:
+                    oncall: 2
+                    weekend: 1
+                    early: 1
+                decisionLog:
+                  - date: "2025-01-15"
+                    decision_type: "leave_conflict"
+                    affected_engineers: ["Alice Johnson", "Bob Smith"]
+                    reason: "Alice on leave, assigned Bob to cover oncall shift"
+                    alternatives_considered: ["Carol Davis", "David Wilson"]
+                    timestamp: "2025-01-09T10:30:15Z"
+        '400':
+          description: Bad request - Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+              examples:
+                invalid_date:
+                  summary: Invalid start date (not Sunday)
+                  value:
+                    error: "Request validation failed"
+                    details:
+                      - field: "start_sunday"
+                        message: "Start date must be a Sunday"
+                        code: "value_error"
+                        value: "2025-01-06"
+                    request_id: "req_123e4567-e89b-12d3-a456-426614174000"
+                    timestamp: "2025-01-09T10:30:00Z"
+                constraint_violation:
+                  summary: Schedule generation constraint violation
+                  value:
+                    error: "Schedule generation constraint violation"
+                    details:
+                      - field: "schedule_constraints"
+                        message: "Cannot assign oncall on weekend"
+                        code: "constraint_violation"
+                    request_id: "req_123e4567-e89b-12d3-a456-426614174000"
+                    timestamp: "2025-01-09T10:30:00Z"
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+              example:
+                error: "Authentication required"
+                details:
+                  - field: "authentication"
+                    message: "Valid session token required"
+                    code: "AUTHENTICATION_REQUIRED"
+                request_id: "req_123e4567-e89b-12d3-a456-426614174000"
+                timestamp: "2025-01-09T10:30:00Z"
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+              example:
+                error: "Insufficient permissions"
+                details:
+                  - field: "authorization"
+                    message: "Editor or Admin role required for schedule generation"
+                    code: "INSUFFICIENT_PERMISSIONS"
+                request_id: "req_123e4567-e89b-12d3-a456-426614174000"
+                timestamp: "2025-01-09T10:30:00Z"
+        '413':
+          description: Request too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+              example:
+                error: "Request too large"
+                details:
+                  - field: "request_size"
+                    message: "Request body exceeds 2MB limit"
+                    code: "REQUEST_TOO_LARGE"
+                request_id: "req_123e4567-e89b-12d3-a456-426614174000"
+                timestamp: "2025-01-09T10:30:00Z"
+        '422':
+          description: Validation error - Detailed field-level errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+              examples:
+                validation_errors:
+                  summary: Multiple validation errors
+                  value:
+                    error: "Request validation failed"
+                    details:
+                      - field: "engineers.0"
+                        message: "Engineer name contains invalid characters"
+                        code: "value_error"
+                        value: "Alice123"
+                      - field: "weeks"
+                        message: "ensure this value is less than or equal to 52"
+                        code: "value_error.number.not_le"
+                        value: 100
+                      - field: "leave.0.engineer"
+                        message: "Leave entry for unknown engineer: 'Unknown Person'"
+                        code: "value_error"
+                        value: "Unknown Person"
+                    request_id: "req_123e4567-e89b-12d3-a456-426614174000"
+                    timestamp: "2025-01-09T10:30:00Z"
+                duplicate_engineers:
+                  summary: Duplicate engineer names
+                  value:
+                    error: "Request validation failed"
+                    details:
+                      - field: "engineers"
+                        message: "Duplicate engineer names detected: 'Alice Johnson' appears multiple times"
+                        code: "value_error"
+                    request_id: "req_123e4567-e89b-12d3-a456-426614174000"
+                    timestamp: "2025-01-09T10:30:00Z"
+        '429':
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+              example:
+                error: "Rate limit exceeded"
+                details:
+                  - field: "rate_limit"
+                    message: "Maximum 50 requests per hour exceeded"
+                    code: "RATE_LIMIT_EXCEEDED"
+                request_id: "req_123e4567-e89b-12d3-a456-426614174000"
+                timestamp: "2025-01-09T10:30:00Z"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+              example:
+                error: "Schedule generation failed"
+                details:
+                  - field: "schedule_generation"
+                    message: "Unexpected error during schedule calculation"
+                    code: "generation_error"
+                request_id: "req_123e4567-e89b-12d3-a456-426614174000"
+                timestamp: "2025-01-09T10:30:00Z"
+
+  /healthz:
+    get:
+      summary: Basic health check
+      description: |
+        Returns basic health status of the service. This endpoint is used by
+        load balancers and monitoring systems to verify the service is running.
+        
+        No authentication required.
+      operationId: healthCheck
+      tags:
+        - Health & Monitoring
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                timestamp: "2025-01-09T10:30:00Z"
+                service: "scheduler-api"
+                version: "2.0"
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              example:
+                error: "Rate limit exceeded"
+
+  /readyz:
+    get:
+      summary: Readiness check with dependency validation
+      description: |
+        Comprehensive readiness check that validates dependencies, core modules,
+        and system requirements. Used by orchestration systems to determine if
+        the service is ready to handle requests.
+        
+        Checks include:
+        - Python dependencies (pandas, pydantic, openpyxl)
+        - Core application modules
+        - Python version compatibility (>=3.8)
+        
+        No authentication required.
+      operationId: readinessCheck
+      tags:
+        - Health & Monitoring
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "ready"
+                timestamp: "2025-01-09T10:30:00Z"
+                service: "scheduler-api"
+                version: "2.0"
+                checks:
+                  dependencies:
+                    status: "pass"
+                    available: ["pandas", "pydantic", "openpyxl"]
+                    missing: []
+                    message: "All dependencies available"
+                  modules:
+                    status: "pass"
+                    successful: ["schedule_core", "export_manager", "models", "lib.logging_utils"]
+                    failed: []
+                    message: "All core modules available"
+                  python:
+                    status: "pass"
+                    version: "3.11.0"
+                    required: ">=3.8"
+                    message: "Python 3.11.0 is compatible"
+        '503':
+          description: Service not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "not_ready"
+                timestamp: "2025-01-09T10:30:00Z"
+                service: "scheduler-api"
+                version: "2.0"
+                checks:
+                  dependencies:
+                    status: "fail"
+                    available: ["pandas", "pydantic"]
+                    missing: ["openpyxl"]
+                    message: "Missing packages: openpyxl"
+
+  /metrics:
+    get:
+      summary: Performance and system metrics
+      description: |
+        Returns detailed system and application metrics for monitoring and
+        observability. Includes memory usage, CPU utilization, and application-specific
+        performance data.
+        
+        **Admin access required.**
+        
+        This endpoint can be disabled via the `ENABLE_METRICS` environment variable.
+      operationId: getMetrics
+      tags:
+        - Health & Monitoring
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsResponse'
+              example:
+                timestamp: "2025-01-09T10:30:00Z"
+                service: "scheduler-api"
+                version: "2.0"
+                system:
+                  python_version: "3.11.0"
+                  platform: "linux"
+                  memory_rss_mb: 45.2
+                  memory_vms_mb: 128.7
+                  cpu_percent: 2.1
+                  num_threads: 8
+                application:
+                  uptime_info: "Process uptime not tracked in serverless"
+                  environment: "production"
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              example:
+                error: "Authentication required"
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              example:
+                error: "Admin access required"
+        '404':
+          description: Metrics endpoint not enabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              example:
+                error: "Metrics endpoint not enabled"
+
+  /artifacts/list:
+    get:
+      summary: List team artifacts
+      description: |
+        Retrieves a list of stored schedule artifacts for the user's team.
+        Artifacts include previously generated schedules in various formats.
+        
+        **Authentication required.** Users can only access artifacts from teams
+        they belong to, unless they have Admin role.
+      operationId: listArtifacts
+      tags:
+        - Artifact Management
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: team_id
+          in: query
+          description: Team ID to list artifacts for (optional, defaults to user's first team)
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of artifacts to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Artifacts listed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artifacts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ArtifactInfo'
+                  total:
+                    type: integer
+                  team_id:
+                    type: string
+              example:
+                artifacts:
+                  - id: "art_123e4567-e89b-12d3-a456-426614174000"
+                    filename: "schedule_2025-01-05_4weeks_default.csv"
+                    format: "CSV"
+                    size_bytes: 2048
+                    created_at: "2025-01-09T10:30:00Z"
+                    created_by: "user_456"
+                    metadata:
+                      engineer_count: 6
+                      weeks: 4
+                      leave_entries: 2
+                total: 1
+                team_id: "team_789"
+
+  /artifacts/get/{artifact_id}:
+    get:
+      summary: Download team artifact
+      description: |
+        Downloads a specific schedule artifact by ID. The artifact is returned
+        in its original format (CSV, XLSX, or JSON).
+        
+        **Authentication required.** Users can only download artifacts from teams
+        they belong to, unless they have Admin role.
+      operationId: getArtifact
+      tags:
+        - Artifact Management
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          description: Unique identifier of the artifact to download
+          schema:
+            type: string
+        - name: team_id
+          in: query
+          description: Team ID (optional, defaults to user's first team)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Artifact downloaded successfully
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              example:
+                error: "Artifact not found"
+
+  /artifacts/delete/{artifact_id}:
+    delete:
+      summary: Delete team artifact
+      description: |
+        Deletes a specific schedule artifact by ID. This action is irreversible.
+        
+        **Editor or Admin role required.** Users can only delete artifacts from teams
+        they belong to, unless they have Admin role.
+      operationId: deleteArtifact
+      tags:
+        - Artifact Management
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          description: Unique identifier of the artifact to delete
+          schema:
+            type: string
+        - name: team_id
+          in: query
+          description: Team ID (optional, defaults to user's first team)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Artifact deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+              example:
+                success: true
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              example:
+                error: "Insufficient permissions"
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              example:
+                error: "Artifact not found"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained through Auth.js/NextAuth authentication.
+        Include the token in the Authorization header as: `Bearer <token>`
+
+  schemas:
+    ScheduleRequest:
+      type: object
+      required:
+        - engineers
+        - start_sunday
+        - weeks
+      properties:
+        engineers:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+          minItems: 6
+          maxItems: 6
+          description: List of exactly 6 engineer names (unique, case-insensitive)
+          example: ["Alice Johnson", "Bob Smith", "Carol Davis", "David Wilson", "Eve Brown", "Frank Miller"]
+        start_sunday:
+          type: string
+          format: date
+          description: Start date for the schedule (must be a Sunday)
+          example: "2025-01-05"
+        weeks:
+          type: integer
+          minimum: 1
+          maximum: 52
+          description: Number of weeks to generate schedule for
+          example: 4
+        seeds:
+          $ref: '#/components/schemas/SeedsConfig'
+        leave:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveEntry'
+          description: Optional list of leave entries
+        format:
+          type: string
+          enum: [csv, xlsx, json]
+          default: csv
+          description: Output format for the schedule
+
+    SeedsConfig:
+      type: object
+      properties:
+        weekend:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 0
+          description: Seed for weekend rotation (0-5)
+        chat:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 0
+          description: Seed for chat rotation (0-5)
+        oncall:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 1
+          description: Seed for oncall rotation (0-5)
+        appointments:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 2
+          description: Seed for appointments rotation (0-5)
+        early:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 0
+          description: Seed for early shift rotation (0-5)
+
+    LeaveEntry:
+      type: object
+      required:
+        - engineer
+        - date
+      properties:
+        engineer:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Name of engineer taking leave (must match engineers list)
+          example: "Alice Johnson"
+        date:
+          type: string
+          format: date
+          description: Date of leave
+          example: "2025-01-15"
+        reason:
+          type: string
+          maxLength: 200
+          default: ""
+          description: Optional reason for leave
+          example: "Vacation"
+
+    ScheduleResponse:
+      type: object
+      properties:
+        schemaVersion:
+          type: string
+          example: "2.0"
+          description: Schema version for compatibility tracking
+        metadata:
+          $ref: '#/components/schemas/ScheduleMetadata'
+        schedule:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleRow'
+        fairnessReport:
+          $ref: '#/components/schemas/FairnessReport'
+        decisionLog:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionEntry'
+
+    ScheduleMetadata:
+      type: object
+      properties:
+        generation_timestamp:
+          type: string
+          format: date-time
+          description: When the schedule was generated
+        configuration:
+          type: object
+          description: Configuration used for generation
+        engineer_count:
+          type: integer
+          description: Number of engineers in the schedule
+        weeks:
+          type: integer
+          description: Number of weeks in the schedule
+        start_date:
+          type: string
+          format: date
+          description: Schedule start date
+        end_date:
+          type: string
+          format: date
+          description: Schedule end date
+        total_days:
+          type: integer
+          description: Total number of days in the schedule
+
+    ScheduleRow:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        day:
+          type: string
+          enum: [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
+        week_index:
+          type: integer
+          minimum: 0
+        early1:
+          type: string
+          description: First early shift assignment
+        early2:
+          type: string
+          description: Second early shift assignment
+        chat:
+          type: string
+          description: Chat support assignment
+        oncall:
+          type: string
+          description: Oncall assignment
+        appointments:
+          type: string
+          description: Appointments assignment
+        engineers:
+          type: array
+          items:
+            $ref: '#/components/schemas/EngineerStatus'
+
+    EngineerStatus:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Engineer name
+        status:
+          type: string
+          enum: ["WORK", "OFF", "LEAVE", ""]
+          description: Work status for the day
+        shift:
+          type: string
+          description: Specific shift assignment or time
+
+    FairnessReport:
+      type: object
+      properties:
+        engineer_stats:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/EngineerStats'
+          description: Per-engineer statistics
+        equity_score:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Gini coefficient (0 = perfect equality, 1 = maximum inequality)
+        max_min_deltas:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Maximum minus minimum assignments for each role type
+        generation_timestamp:
+          type: string
+          format: date-time
+
+    EngineerStats:
+      type: object
+      properties:
+        name:
+          type: string
+        oncall_count:
+          type: integer
+          description: Number of oncall assignments
+        weekend_count:
+          type: integer
+          description: Number of weekend assignments
+        early_count:
+          type: integer
+          description: Number of early shift assignments
+        chat_count:
+          type: integer
+          description: Number of chat support assignments
+        appointments_count:
+          type: integer
+          description: Number of appointments assignments
+        total_work_days:
+          type: integer
+          description: Total working days
+        leave_days:
+          type: integer
+          description: Total leave days
+
+    DecisionEntry:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: Date the decision was made for
+        decision_type:
+          type: string
+          enum: [role_assignment, leave_conflict, backfill, constraint_resolution]
+          description: Type of scheduling decision
+        affected_engineers:
+          type: array
+          items:
+            type: string
+          description: Engineers affected by this decision
+        reason:
+          type: string
+          description: Explanation of why this decision was made
+        alternatives_considered:
+          type: array
+          items:
+            type: string
+          description: Other options that were considered
+        timestamp:
+          type: string
+          format: date-time
+          description: When the decision was logged
+
+    ValidationError:
+      type: object
+      properties:
+        field:
+          type: string
+          description: Field that failed validation
+        message:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Machine-readable error code
+        value:
+          description: The invalid value that was provided
+
+    APIErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: High-level error message
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          description: Detailed field-level validation errors
+        request_id:
+          type: string
+          format: uuid
+          description: Unique request identifier for debugging
+        timestamp:
+          type: string
+          format: date-time
+          description: When the error occurred
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy]
+        timestamp:
+          type: string
+          format: date-time
+        service:
+          type: string
+        version:
+          type: string
+
+    ReadinessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ready, not_ready]
+        timestamp:
+          type: string
+          format: date-time
+        service:
+          type: string
+        version:
+          type: string
+        checks:
+          type: object
+          properties:
+            dependencies:
+              $ref: '#/components/schemas/CheckResult'
+            modules:
+              $ref: '#/components/schemas/CheckResult'
+            python:
+              $ref: '#/components/schemas/CheckResult'
+
+    CheckResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pass, fail]
+        message:
+          type: string
+
+    MetricsResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        service:
+          type: string
+        version:
+          type: string
+        system:
+          type: object
+          properties:
+            python_version:
+              type: string
+            platform:
+              type: string
+            memory_rss_mb:
+              type: number
+            memory_vms_mb:
+              type: number
+            cpu_percent:
+              type: number
+            num_threads:
+              type: integer
+        application:
+          type: object
+          properties:
+            uptime_info:
+              type: string
+            environment:
+              type: string
+
+    ArtifactInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique artifact identifier
+        filename:
+          type: string
+          description: Original filename
+        format:
+          type: string
+          enum: [CSV, XLSX, JSON]
+          description: File format
+        size_bytes:
+          type: integer
+          description: File size in bytes
+        created_at:
+          type: string
+          format: date-time
+          description: When the artifact was created
+        created_by:
+          type: string
+          description: User ID who created the artifact
+        metadata:
+          type: object
+          description: Additional metadata about the artifact
+
+tags:
+  - name: Schedule Generation
+    description: Core schedule generation functionality
+  - name: Health & Monitoring
+    description: Health checks and system monitoring
+  - name: Artifact Management
+    description: Managing stored schedule artifacts

@@ -1,0 +1,47 @@
+{
+  "name": "scheduler-vercel-app",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:e2e": "playwright test",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
+    "type-check": "tsc --noEmit",
+    "deploy:setup": "node scripts/deploy-setup.js",
+    "deploy:validate": "node scripts/deploy-setup.js --validate",
+    "deploy:config": "node scripts/deploy-setup.js --config",
+    "deploy:edge-config": "node scripts/deploy-setup.js --edge-config",
+    "prebuild": "npm run deploy:validate"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "zod": "^3.22.4",
+    "next-auth": "^4.24.5",
+    "@next-auth/prisma-adapter": "^1.0.7",
+    "prisma": "^5.7.1",
+    "@prisma/client": "^5.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/jest": "^29.5.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@playwright/test": "^1.40.0",
+    "csv-parse": "^5.5.2",
+    "eslint": "^8.50.0",
+    "eslint-config-next": "^14.0.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0"
+  }
+}
