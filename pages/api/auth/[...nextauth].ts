@@ -1,20 +1,17 @@
-import NextAuth, { NextAuthOptions, User } from "next-auth"
-import { PrismaAdapter } from "@next-auth/prisma-adapter"
-import { prisma } from "../../../lib/prisma"
+import NextAuth, { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import GoogleProvider from "next-auth/providers/google"
 
-// Extend the built-in User type
-declare module "next-auth" {
-  interface User {
-    role?: string
-    teams?: { id: string; name: string; role: string }[]
-  }
+// Custom user type for our application
+interface CustomUser {
+  id: string
+  email: string
+  name?: string | null
+  role?: string
+  teams?: { id: string; name: string; role: string }[]
 }
 
 export const authOptions: NextAuthOptions = {
-  // Only use PrismaAdapter if database is available
-  ...(process.env.DATABASE_URL ? { adapter: PrismaAdapter(prisma) } : {}),
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -39,32 +36,27 @@ export const authOptions: NextAuthOptions = {
             name: "Demo User",
             role: "ADMIN",
             teams: [{ id: "demo-team", name: "Demo Team", role: "ADMIN" }]
-          } as User
+          }
         }
 
-        // For production with database
-        if (process.env.DATABASE_URL && process.env.DATABASE_URL !== "file:./dev.db") {
-          try {
-            const user = await prisma.user.findUnique({
-              where: { email: credentials.email },
-              include: { teamMemberships: { include: { team: true } } }
-            })
+        // Additional demo users for testing
+        if (credentials.email === "admin@example.com" && credentials.password === "admin123") {
+          return {
+            id: "admin-user",
+            email: credentials.email,
+            name: "Admin User",
+            role: "ADMIN",
+            teams: [{ id: "admin-team", name: "Admin Team", role: "ADMIN" }]
+          }
+        }
 
-            if (user && credentials.password === "demo123") { // Replace with proper password verification
-              return {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                role: user.role,
-                teams: user.teamMemberships.map((tm: any) => ({
-                  id: tm.team.id,
-                  name: tm.team.name,
-                  role: tm.role || 'MEMBER'
-                }))
-              } as User
-            }
-          } catch (error) {
-            console.error('Database auth error:', error)
+        if (credentials.email === "user@example.com" && credentials.password === "user123") {
+          return {
+            id: "regular-user",
+            email: credentials.email,
+            name: "Regular User",
+            role: "USER",
+            teams: [{ id: "user-team", name: "User Team", role: "MEMBER" }]
           }
         }
 
@@ -78,8 +70,8 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = user.role
-        token.teams = user.teams
+        token.role = (user as any).role
+        token.teams = (user as any).teams
       }
       return token
     },
