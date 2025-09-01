@@ -2,14 +2,7 @@ import NextAuth, { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import GoogleProvider from "next-auth/providers/google"
 
-// Custom user type for our application
-interface CustomUser {
-  id: string
-  email: string
-  name?: string | null
-  role?: string
-  teams?: { id: string; name: string; role: string }[]
-}
+
 
 export const authOptions: NextAuthOptions = {
   providers: [
