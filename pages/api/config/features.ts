@@ -199,7 +199,7 @@ export default async function handler(
           // Override with Edge Config values
           for (const [key, value] of Object.entries(edgeConfig)) {
             if (key in processedFeatures) {
-              processedFeatures[key] = value;
+              processedFeatures[key] = value as any;
             }
           }
         }
