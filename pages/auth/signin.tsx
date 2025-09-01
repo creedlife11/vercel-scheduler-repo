@@ -26,10 +26,15 @@ export default function SignIn({ providers }: SignInProps) {
         redirect: false,
       })
 
+      console.log('Sign in result:', result);
+      
       if (result?.error) {
         setError("Invalid credentials")
-      } else {
+      } else if (result?.ok) {
+        // Successful login, redirect to home
         window.location.href = "/"
+      } else {
+        setError("Sign in failed")
       }
     } catch (err) {
       setError("Sign in failed")

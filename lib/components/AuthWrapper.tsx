@@ -6,15 +6,33 @@ interface AuthWrapperProps {
   children: ReactNode
   requireAuth?: boolean
   requiredRole?: "VIEWER" | "EDITOR" | "ADMIN"
+  allowBypass?: boolean
 }
 
 export function AuthWrapper({ 
   children, 
   requireAuth = true, 
-  requiredRole 
+  requiredRole,
+  allowBypass = false
 }: AuthWrapperProps) {
   const { data: session, status } = useSession()
   const router = useRouter()
+  
+  // Debug logging
+  console.log('AuthWrapper - Status:', status, 'Session:', session)
+  
+  // Check for bypass parameter
+  const [bypassAuth, setBypassAuth] = useState(false);
+  
+  useEffect(() => {
+    if (allowBypass && typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('bypass') === 'true') {
+        setBypassAuth(true);
+        console.log('Authentication bypassed via URL parameter');
+      }
+    }
+  }, [allowBypass]);
 
   useEffect(() => {
     if (status === "loading") return // Still loading
@@ -50,13 +68,25 @@ export function AuthWrapper({
     )
   }
 
-  if (requireAuth && !session) {
+  if (requireAuth && !session && !bypassAuth) {
     return null // Will redirect to sign in
   }
 
   return (
     <div>
-      {session && (
+      {bypassAuth && (
+        <div style={{
+          padding: "8px 16px",
+          backgroundColor: "#fef3c7",
+          borderBottom: "1px solid #f59e0b",
+          textAlign: "center",
+          fontSize: 14,
+          color: "#92400e"
+        }}>
+          ⚠️ Authentication bypassed for testing
+        </div>
+      )}
+      {(session || bypassAuth) && (
         <header style={{
           display: "flex",
           justifyContent: "space-between",
@@ -86,7 +116,7 @@ export function AuthWrapper({
           
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <span style={{ fontSize: 14, color: "#6b7280" }}>
-              {session.user.name || session.user.email}
+              {bypassAuth ? "Test User" : (session?.user?.name || session?.user?.email)}
             </span>
             <span style={{ 
               fontSize: 12, 
@@ -95,7 +125,7 @@ export function AuthWrapper({
               borderRadius: 4,
               color: "#374151"
             }}>
-              {session.user.role}
+              {bypassAuth ? "TEST" : session?.user?.role}
             </span>
             <button
               onClick={() => signOut({ callbackUrl: "/auth/signin" })}

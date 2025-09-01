@@ -7,8 +7,8 @@ import GoogleProvider from "next-auth/providers/google"
 export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: process.env.GOOGLE_CLIENT_ID || "dummy",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "dummy",
     }),
     CredentialsProvider({
       name: "credentials",
@@ -17,12 +17,16 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
+        console.log('Authorize called with:', credentials?.email);
+        
         if (!credentials?.email || !credentials?.password) {
+          console.log('Missing credentials');
           return null
         }
 
         // Demo authentication - replace with proper authentication in production
         if (credentials.email === "demo@example.com" && credentials.password === "demo123") {
+          console.log('Demo user authenticated');
           return {
             id: "demo-user",
             email: credentials.email,
@@ -48,11 +52,22 @@ export const authOptions: NextAuthOptions = {
             id: "regular-user",
             email: credentials.email,
             name: "Regular User",
-            role: "USER",
+            role: "VIEWER",
             teams: [{ id: "user-team", name: "User Team", role: "MEMBER" }]
           }
         }
 
+        if (credentials.email === "editor@example.com" && credentials.password === "editor123") {
+          return {
+            id: "editor-user",
+            email: credentials.email,
+            name: "Editor User",
+            role: "EDITOR",
+            teams: [{ id: "editor-team", name: "Editor Team", role: "EDITOR" }]
+          }
+        }
+
+        console.log('Authentication failed for:', credentials?.email);
         return null
       }
     })
@@ -60,9 +75,11 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
   },
+  secret: process.env.NEXTAUTH_SECRET || "fallback-secret-for-development",
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
+        console.log('JWT callback - user:', user);
         token.role = (user as any).role
         token.teams = (user as any).teams
       }
@@ -70,10 +87,12 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (token && session.user) {
+        console.log('Session callback - token:', token);
         (session.user as any).id = token.sub!
         ;(session.user as any).role = token.role as string
         ;(session.user as any).teams = token.teams as any[]
       }
+      console.log('Session callback - final session:', session);
       return session
     },
   },
