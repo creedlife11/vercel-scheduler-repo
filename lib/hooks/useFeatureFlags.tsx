@@ -109,13 +109,24 @@ export function useFeatureFlags(): UseFeatureFlagsReturn {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('/api/config/features', {
+      let response = await fetch('/api/config/features', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include' // Include session cookies
       });
+
+      // If main endpoint fails, try simple fallback
+      if (!response.ok) {
+        console.warn(`Main features endpoint failed (${response.status}), trying fallback`);
+        response = await fetch('/api/config/features-simple', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`Failed to fetch feature flags: ${response.status} ${response.statusText}`);

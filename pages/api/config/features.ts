@@ -41,9 +41,16 @@ export default async function handler(
   }
 
   try {
-    // Get user session for user-specific feature flags
-    const session = await getServerSession(req, res, authOptions);
-    const userId = session?.user?.id || null;
+    // Get user session for user-specific feature flags (with fallback)
+    let session = null;
+    let userId = null;
+    
+    try {
+      session = await getServerSession(req, res, authOptions);
+      userId = session?.user?.id || null;
+    } catch (authError) {
+      console.warn('Auth session error, continuing without session:', authError);
+    }
     // const userGroups = session?.user?.groups || [];
 
     // Get environment
