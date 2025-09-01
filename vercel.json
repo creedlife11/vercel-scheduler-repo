@@ -1,15 +1,5 @@
 {
-  "functions": {
-    "api/generate.py": {
-      "runtime": "python3.9"
-    },
-    "api/metrics.py": {
-      "runtime": "python3.9"
-    },
-    "api/readyz.py": {
-      "runtime": "python3.9"
-    }
-  },
+
   "headers": [
     {
       "source": "/api/(.*)",
