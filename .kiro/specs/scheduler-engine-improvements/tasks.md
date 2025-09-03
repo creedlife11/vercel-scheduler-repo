@@ -1,334 +1,337 @@
 # Implementation Plan
 
-- [x] 1. Core Data Integrity and Export Foundation
+- [x] 1. Enhanced Weekend Shift Logic
 
 
 
 
-  - Create enhanced data models with strict validation
-  - Implement JSON-first export system as single source of truth
-  - Add schema versioning to all outputs
-  - _Requirements: 1.1, 1.4, 1.7_
+  - Enhance existing weekend assignment with fairness weighting
+  - Add weekend compensation tracking for better transparency
+  - Improve weekend assignment decision logging
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-- [x] 1.1 Create enhanced data models and validation schemas
-
-
-  - Define ScheduleResult, FairnessReport, and DecisionEntry dataclasses
-  - Implement Pydantic models for API validation with custom validators
-  - Create TypeScript Zod schemas for frontend validation
-  - _Requirements: 1.2, 1.3, 3.1, 3.2_
-
-- [x] 1.2 Implement JSON-first export manager
+- [x] 1.1 Enhance existing weekend assignment function
 
 
-  - Create ExportManager class that generates JSON as source of truth
-  - Build CSV export from JSON with proper RFC 4180 formatting and UTF-8 BOM
-  - Build XLSX export from JSON with multiple sheets for different data types
-  - _Requirements: 1.4, 1.5, 1.6_
+  - Modify weekend_worker_for_week to consider fairness weighting
+  - Add weekend assignment decision logging to existing generate_day_assignments
+  - Create WeekendCompensation tracking for transparency
+  - _Requirements: 1.1, 1.2_
 
-- [x] 1.3 Add schema versioning and metadata tracking
+- [x] 1.2 Add weekend compensation calculation
 
 
-  - Include schemaVersion field in all exports
-  - Add generation timestamp and configuration metadata to outputs
-  - Create descriptive filename generation with date and config info
-  - _Requirements: 1.7, 5.5_
+  - Create calculate_weekend_compensation function for tracking compensatory time
+  - Integrate compensation tracking with existing schedule output
+  - Add weekend pattern indicators to schedule display
+  - _Requirements: 1.3, 1.4_
 
-- [-] 2. Comprehensive Testing Infrastructure
+- [x] 1.3 Enhance weekend assignment testing
 
 
 
+  - Add tests for fairness-weighted weekend assignment
+  - Test weekend compensation tracking accuracy
+  - Validate weekend assignment decision logging
+  - _Requirements: 1.5_
 
-  - Build regression test suite with invariant checking
-  - Create test fixtures and edge case scenarios
-  - Set up CI/CD pipeline with coverage requirements
-  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.6_
-
-- [x] 2.1 Create core regression test suite
-
-
-  - Write tests asserting exact CSV column counts for every row
-  - Implement status field validation tests (WORK/OFF/LEAVE only)
-  - Create engineer field integrity tests (no time strings in engineer columns)
-  - _Requirements: 2.1, 2.2, 2.3_
-
-- [x] 2.2 Build comprehensive edge case test coverage
+- [x] 2. Enhanced On-Call Assignment Logic
 
 
 
 
-  - Test leave handling with various conflict scenarios
-  - Validate weekend coverage patterns (Week A/B alternation)
-  - Test role assignment fairness and rotation logic
-  - _Requirements: 2.4_
+  - Improve existing on-call assignment to avoid weekend workers when possible
+  - Add intelligent conflict resolution for on-call assignments
+  - Enhance on-call assignment decision logging
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [x] 2.3 Set up dual-lane CI/CD pipeline
-
-
+- [x] 2.1 Enhance on-call selection in generate_day_assignments
 
 
-  - Configure Python test lane with pytest, coverage, and linting
-  - Configure Node.js test lane with Jest, TypeScript checking, and ESLint
-  - Enforce 90% coverage requirement for scheduling core
-  - _Requirements: 2.5, 2.6_
+  - Modify existing on-call assignment logic to prefer non-weekend workers
+  - Add should_avoid_weekend_worker helper function
+  - Enhance decision logging for on-call assignments with alternatives considered
+  - _Requirements: 2.1, 2.2_
 
-- [x] 3. Enhanced Schedule Core with Decision Logging
-
-
+- [x] 2.2 Add weekend worker avoidance logic
 
 
-  - Upgrade scheduling engine to track decision rationale
-  - Implement fairness calculation and reporting
-  - Add conflict resolution with backfill logic
-  - _Requirements: 4.3, 4.4, 4.5_
+  - Create enhanced_oncall_selection function with conflict avoidance
+  - Implement fallback to any available engineer when no non-weekend options exist
+  - Add decision rationale logging for weekend worker assignments
+  - _Requirements: 2.2, 2.4_
 
-- [x] 3.1 Implement decision logging system
-
-
-  - Create DecisionEntry tracking for daily scheduling decisions
-  - Log exclusions due to leave with alternative selections
-  - Record role assignment rationale and conflicts resolved
-  - _Requirements: 4.3, 4.4_
-
-- [x] 3.2 Build fairness analysis engine
+- [x] 2.3 Enhance on-call assignment testing
 
 
-  - Calculate per-engineer role counts (oncall, weekend, early shifts)
-  - Compute max-min deltas and equity scores using Gini coefficient
-  - Generate fairness report with actionable insights
+  - Add tests for weekend worker avoidance in on-call assignment
+  - Test fallback behavior when all available engineers work weekends
+  - Validate on-call assignment decision logging accuracy
+  - _Requirements: 2.3, 2.5_
+
+- [x] 3. Enhanced Early Shift Assignment
+
+
+
+
+  - Modify existing early shift logic to guarantee on-call engineer inclusion
+  - Improve fairness-based selection for second early shift engineer
+  - Add comprehensive early shift assignment logging
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [x] 3.1 Modify existing early shift assignment in generate_day_assignments
+
+
+  - Ensure on-call engineer is always assigned as Early1 during weekdays
+  - Modify existing early shift rotation to guarantee on-call inclusion
+  - Add validation to prevent on-call engineer from being excluded
+  - _Requirements: 3.1, 3.2_
+
+- [x] 3.2 Enhance second early shift engineer selection
+
+
+  - Create select_second_early_engineer function with fairness consideration
+  - Modify existing rotation logic to exclude on-call engineer from second position
+  - Add decision logging for second early shift selection with alternatives
+  - _Requirements: 3.3, 3.4_
+
+- [x] 3.3 Add enhanced early shift testing
+
+
+  - Test on-call engineer is always Early1 during weekdays
+  - Validate fair selection of second early shift engineer
+  - Test early shift assignment decision logging completeness
+  - _Requirements: 3.5_
+
+- [x] 4. Enhanced Daily Role Assignment
+
+
+
+
+  - Improve existing chat and appointments assignment with better conflict handlingtry py
+  - Add fairness consideration to daily role rotation
+  - Enhance daily role assignment decision logging
+  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
+
+- [x] 4.1 Enhance existing daily role assignment in generate_day_assignments
+
+
+  - Improve existing chat and appointments assignment logic
+  - Add fairness weighting to role selection when multiple engineers available
+  - Enhance decision logging for daily role assignments
   - _Requirements: 4.1, 4.2_
 
-- [x] 3.3 Enhance conflict resolution and backfill logic
+- [x] 4.2 Add enhanced role rotation logic
 
 
-  - Implement intelligent backfill when engineers are on leave
-  - Add validation for scheduling conflicts and impossible scenarios
-  - Create alternative suggestion system for manual overrides
-  - _Requirements: 4.4, 4.5_
+  - Create get_role_rotation_order function with fairness consideration
+  - Improve existing rotation to better handle engineer unavailability
+  - Add alternative selection logging for role assignments
+  - _Requirements: 4.3, 4.4_
 
-- [x] 4. Robust Input Validation System
-
-
+- [x] 4.3 Enhance daily role assignment testing
 
 
-  - Implement dual validation (frontend Zod + backend Pydantic)
-  - Add name hygiene and duplicate detection
-  - Create smart date handling with Sunday snapping
-  - _Requirements: 3.1, 3.2, 3.4, 3.6_
 
-- [x] 4.1 Create comprehensive frontend validation
+  - Test fairness weighting in daily role selection
+  - Validate improved conflict handling for unavailable engineers
+  - Test daily role assignment decision logging accuracy
+  - _Requirements: 4.5_
 
-
-  - Implement Zod schemas for all form inputs with real-time validation
-  - Add unique engineer name validation with case-insensitive checking
-  - Create smart date picker with Sunday detection and snapping
-  - _Requirements: 3.1, 3.4, 3.6_
-
-- [x] 4.2 Implement backend validation with Pydantic
-
-
-  - Create Pydantic models matching frontend schemas
-  - Add custom validators for business rules (Sunday dates, unique names)
-  - Implement structured error responses with field-level details
-  - _Requirements: 3.2, 3.3, 3.5_
-
-- [x] 4.3 Add name hygiene and normalization
-
-
-  - Implement whitespace trimming and Unicode normalization
-  - Add duplicate detection with case and spacing variations
-  - Create warnings for similar names that might be duplicates
-  - _Requirements: 3.6_
-
-- [x] 5. Enhanced User Experience Features
+- [x] 5. Enhanced Schedule Display and Role Clarity
 
 
 
 
-  - Create artifact panel with multiple output tabs
-  - Implement leave management with CSV/XLSX import
-  - Add preset configuration system
-  - _Requirements: 5.1, 5.3, 5.4_
+  - Improve existing schedule output formatting and role visibility
+  - Add better shift time indicators and status clarity
+  - Enhance schedule export formats with role information
+  - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [x] 5.1 Build artifact panel with tabbed interface
-
-
-  - Create React component with tabs for CSV/XLSX/JSON/Fairness/Decisions
-  - Implement in-browser preview for each format type
-  - Add copy-to-clipboard functionality for JSON and text formats
-  - _Requirements: 5.1_
-
-- [x] 5.2 Implement leave management system
+- [x] 5.1 Enhance schedule display formatting
 
 
-  - Create CSV/XLSX import functionality for leave data
-  - Build conflict detection and preview before schedule generation
-  - Add leave entry form with date validation and conflict warnings
-  - _Requirements: 5.3_
+  - Improve existing DataFrame output to clearly show all role assignments
+  - Add better formatting for shift times (06:45-15:45 vs 08:00-17:00 vs Weekend)
+  - Ensure WORK/OFF/LEAVE status is clearly displayed for each engineer
+  - _Requirements: 5.1, 5.3_
 
-- [x] 5.3 Create preset configuration system
+- [x] 5.2 Add role assignment clarity to exports
 
 
-  - Implement preset save/load functionality for common rule sets
-  - Create default presets (Ops-Default, Holiday-Light, EU Rotation)
-  - Add preset sharing and import/export capabilities
-  - _Requirements: 5.4_
+  - Enhance existing CSV/XLSX export to include clear role indicators
+  - Add role summary sections to exported schedules
+  - Improve schedule readability for end users
+  - _Requirements: 5.2, 5.4_
 
-- [x] 6. Monitoring and Reliability Infrastructure
+- [x] 5.3 Add schedule display testing
 
 
 
-  - Add structured logging with request tracking
-  - Implement health endpoints for monitoring
-  - Create performance metrics collection
+  - Test schedule formatting accuracy and readability
+  - Validate role assignments are clearly visible in all export formats
+  - Test shift time display consistency
+  - _Requirements: 5.5_
+
+
+- [x] 6. Enhanced Leave Management System
+
+
+  - Improve existing leave handling with intelligent backfill selection
+  - Add leave impact analysis for fairness calculations
+  - Enhance leave conflict resolution and decision logging
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-- [x] 6.1 Implement structured logging system
+- [x] 6.1 Enhance existing backfill logic in generate_day_assignments
 
 
-  - Add request ID generation and tracking throughout request lifecycle
-  - Create structured log entries with timing, input sizes, and outcomes
-  - Include request ID in all error responses for debugging
+  - Improve existing find_backfill_candidates function with fairness consideration
+  - Add intelligent backfill selection based on role requirements and engineer workload
+  - Enhance leave exclusion decision logging with alternative suggestions
   - _Requirements: 6.1, 6.2_
 
-- [x] 6.2 Create health and readiness endpoints
+- [x] 6.2 Add leave impact analysis
 
 
-  - Implement /api/healthz for basic health checking
-  - Create /api/readyz for dependency and cold start validation
-  - Add optional /api/metrics endpoint for performance monitoring
-  - _Requirements: 6.3_
+  - Create calculate_leave_impact_on_fairness function
+  - Ensure leave days don't negatively affect engineer fairness scores
+  - Add leave coverage adequacy warnings when insufficient staff available
+  - _Requirements: 6.2, 6.4_
 
-- [x] 6.3 Add performance monitoring and invariant checking
-
-
-  - Track processing times, memory usage, and output sizes
-  - Implement scheduling invariant validation (no oncall on weekends, etc.)
-  - Log invariant violations for debugging and alerting
-  - _Requirements: 6.4, 6.5_
-
-- [x] 7. Security and Multi-tenancy Foundation
+- [x] 6.3 Enhance leave management testing
 
 
 
+  - Test intelligent backfill selection prioritizes fair distribution
+  - Validate leave days are excluded from fairness penalty calculations
+  - Test leave conflict resolution and alternative suggestion generation
+  - _Requirements: 6.3, 6.5_
 
-  - Implement authentication and authorization
-  - Add request limiting and input sanitization
-  - Create team-scoped data isolation
-  - _Requirements: 7.1, 7.2, 7.4, 7.5_
-
-- [x] 7.1 Set up authentication system
+- [x] 7. Enhanced Fairness Analysis and Insights
 
 
-  - Integrate Auth.js or Clerk for user authentication
-  - Implement role-based access control (Viewer/Editor/Admin)
-  - Add session management and secure logout functionality
+
+
+
+
+
+
+
+  - Extend existing fairness calculation with Gini coefficient insights
+  - Add comprehensive fairness reporting with actionable recommendations
+  - Create fairness-based assignment weighting throughout the system
+  - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
+
+
+- [x] 7.1 Enhance existing fairness calculation in calculate_fairness_report
+
+  - Extend existing Gini coefficient calculation with detailed insights
+  - Add generate_fairness_insights function for actionable recommendations
+  - Create EnhancedFairnessTracker class for assignment weighting
   - _Requirements: 7.1, 7.2_
 
-- [x] 7.2 Implement security controls and rate limiting
 
 
-  - Add request body size limits and input sanitization
-  - Implement rate limiting per user/IP to prevent abuse
-  - Create week count and engineer limits for resource protection
-  - _Requirements: 7.4, 7.5_
-
-- [x] 7.3 Add privacy controls and data isolation
-
-
-  - Hash engineer names in all log outputs for privacy
-  - Implement team-scoped artifact storage and access
-  - Add audit logging for sensitive operations
+- [x] 7.2 Add fairness-weighted assignment selection
+  - Create fairness weighting functions for use in role assignment
+  - Integrate fairness consideration into weekend, on-call, and daily role selection
+  - Add fairness impact tracking for all assignment decisions
   - _Requirements: 7.3, 7.4_
 
-- [x] 8. API Documentation and Standards
+- [x] 7.3 Enhance fairness reporting and testing
+  - Add comprehensive fairness insights to existing ScheduleResult output
+  - Test fairness weighting improves distribution over multiple schedule generations
+  - Validate fairness insights provide actionable recommendations
+  - _Requirements: 7.5_
 
+- [x] 8. Enhanced Decision Logging and Transparency (COMPLETED)
+  - ✅ Implemented comprehensive decision logging in generate_day_assignments
+  - ✅ Added DecisionEntry tracking for all assignment decisions with rationale
+  - ✅ Created decision log export in ScheduleResult output
+  - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
-
-  - Create OpenAPI specification with examples
-  - Implement standardized error responses
-  - Add comprehensive API documentation
-  - _Requirements: 8.1, 8.2, 8.3, 8.4_
-
-- [x] 8.1 Generate OpenAPI specification
-
-
-  - Create comprehensive OpenAPI 3.0 spec for all endpoints
-  - Include request/response examples for all scenarios
-  - Add validation error examples with 422 response codes
+- [x] 8.1 Implement decision logging system (COMPLETED)
+  - ✅ Created DecisionEntry dataclass in models.py
+  - ✅ Added decision logging throughout generate_day_assignments function
+  - ✅ Implemented decision type categorization (role_assignment, leave_exclusion, backfill, etc.)
   - _Requirements: 8.1, 8.2_
 
-- [x] 8.2 Create comprehensive API documentation
-
-
-  - Write detailed endpoint documentation with curl examples
-  - Document all validation rules and error conditions
-  - Include integration guides and best practices
+- [x] 8.2 Add comprehensive decision tracking (COMPLETED)
+  - ✅ Implemented alternatives_considered tracking for all assignments
+  - ✅ Added conflict detection and resolution logging
+  - ✅ Created decision rationale documentation for each assignment type
   - _Requirements: 8.3_
 
-- [x] 8.3 Document system limitations and constraints
+- [x] 8.3 Integrate decision logs with schedule output (COMPLETED)
+  - ✅ Added decision_log to ScheduleResult dataclass
+  - ✅ Implemented decision log export in make_enhanced_schedule function
+  - ✅ Created decision log analysis and insights generation
+  - _Requirements: 8.4, 8.5_
+
+- [x] 9. Comprehensive Testing and Quality Assurance (COMPLETED)
+  - ✅ Implemented Playwright E2E test suite with full workflow coverage
+  - ✅ Added invariant validation and schedule integrity checking
+  - ✅ Created comprehensive test coverage for all scheduling business rules
+  - _Requirements: All testing requirements_
+
+- [x] 9.1 Build comprehensive E2E test suite (COMPLETED)
+  - ✅ Created Playwright tests in tests/e2e/ directory
+  - ✅ Implemented form filling, schedule generation, and download validation
+  - ✅ Added CSV/XLSX parsing and structure validation
+  - _Requirements: E2E testing coverage_
+
+- [x] 9.2 Add invariant validation and business rule testing (COMPLETED)
+  - ✅ Implemented ScheduleInvariantChecker in lib/invariant_checker.py
+  - ✅ Added comprehensive business rule validation (no oncall on weekends, etc.)
+  - ✅ Created fairness distribution validation and violation reporting
+  - _Requirements: Business rule compliance_
+
+- [x] 10. Infrastructure and System Integration (COMPLETED)
+  - ✅ Integrated all scheduling components with API and export systems
+  - ✅ Implemented feature flags and deployment configuration
+  - ✅ Created comprehensive monitoring, logging, and documentation
+  - _Requirements: All infrastructure requirements_
+
+- [x] 10.1 Integrate enhanced scheduling with existing systems (COMPLETED)
+  - ✅ Connected enhanced schedule_core.py with API endpoints
+  - ✅ Integrated fairness reporting with export_manager.py
+  - ✅ Added monitoring and logging throughout the application stack
+  - _Requirements: System integration_
+
+- [x] 10.2 Implement feature flags and deployment infrastructure (COMPLETED)
+  - ✅ Added feature flag system with lib/feature_flags.py
+  - ✅ Created deployment configuration and environment management
+  - ✅ Implemented gradual rollout capabilities for new features
+  - _Requirements: Deployment reliability_
+
+- [x] 10.3 Create comprehensive documentation and operational guides (COMPLETED)
+  - ✅ Written API documentation with OpenAPI specification
+  - ✅ Created deployment guides and troubleshooting documentation
+  - ✅ Implemented operational monitoring and maintenance procedures
+  - _Requirements: Documentation and operations_
+
+- [x] 11. Complete Enhanced Weekend Assignment Integration
 
 
-  - Create "Known Limitations" section in documentation
-  - Document performance characteristics and scaling limits
-  - Add troubleshooting guide for common issues
-  - _Requirements: 8.4_
-
-- [x] 9. End-to-End Testing and Quality Assurance
 
 
 
 
-  - Create Playwright E2E test suite
-  - Implement download validation and parsing tests
-  - Add visual regression testing for UI components
-  - _Requirements: 2.5_
-
-- [x] 9.1 Build comprehensive E2E test suite
 
 
-  - Create Playwright tests covering complete user workflows
-  - Test form filling, schedule generation, and file downloads
-  - Validate downloaded CSV/XLSX files for correct structure and data
-  - _Requirements: 2.5_
+  - Replace weekend_worker_for_week calls with enhanced_weekend_assignment in main schedule generation
+  - Integrate fairness-weighted weekend selection into make_schedule_with_decisions function
+  - Ensure weekend assignment fairness tracking is properly applied throughout schedule generation
+  - _Requirements: 1.1, 1.2, 1.3_
 
-- [x] 9.2 Add invariant validation in E2E tests
-
-
-  - Parse downloaded files and assert scheduling invariants
-  - Verify no oncall assignments on weekends
-  - Check status field integrity and engineer name consistency
-  - _Requirements: 2.1, 2.2, 2.3_
-
-- [x] 10. Integration and Final Polish
+- [x] 12. Complete Enhanced Backfill Integration
 
 
 
-  - Wire all components together
-  - Add feature flags for gradual rollout
-  - Create deployment configuration and documentation
-  - _Requirements: All_
-
-- [x] 10.1 Integrate all enhanced components
 
 
-  - Connect enhanced scheduling core with new validation system
-  - Wire artifact panel to new export formats and fairness reporting
-  - Integrate monitoring and logging throughout the application
-  - _Requirements: All requirements integration_
 
-- [x] 10.2 Add feature flag system and deployment config
-
-
-  - Implement Vercel Edge Config for feature toggles
-  - Create environment-specific configuration management
-  - Add gradual rollout capabilities for new features
-  - _Requirements: Deployment and reliability_
-
-- [x] 10.3 Create comprehensive deployment documentation
-
-
-  - Write deployment guide with environment setup
-  - Document feature flag configuration and monitoring setup
-  - Create operational runbook for troubleshooting and maintenance
-  - _Requirements: 8.3, 8.4_
+  - Replace remaining find_backfill_candidates calls with enhanced_backfill_selection
+  - Ensure all backfill logic uses fairness-weighted selection consistently
+  - Integrate enhanced backfill decision logging throughout schedule generation
+  - _Requirements: 6.1, 6.2_
