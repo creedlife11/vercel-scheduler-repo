@@ -2,7 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 
 // Simple Node.js implementation of the scheduler
 function generateSchedule(engineers: string[], startDate: string, weeks: number, seeds: any) {
-  const schedule = [];
+  const schedule: any[] = [];
   const roles = ['weekend', 'chat', 'oncall', 'appointments', 'early'];
   
   // Simple round-robin assignment with seed offsets
