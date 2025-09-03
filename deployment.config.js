@@ -32,8 +32,8 @@ const deploymentConfig = {
       name: 'preview',
       domain: '*.vercel.app',
       features: {
-        enableAuthenticationSystem: true,
-        enableRateLimiting: true,
+        enableAuthenticationSystem: false,
+        enableRateLimiting: false,
         enableTeamStorage: true,
         enableExperimentalFeatures: false,
         maxWeeksAllowed: 52,
@@ -54,8 +54,8 @@ const deploymentConfig = {
       name: 'production',
       domain: process.env.PRODUCTION_DOMAIN || 'scheduler.example.com',
       features: {
-        enableAuthenticationSystem: true,
-        enableRateLimiting: true,
+        enableAuthenticationSystem: false,
+        enableRateLimiting: false,
         enableTeamStorage: true,
         enableExperimentalFeatures: false,
         maxWeeksAllowed: 52,
@@ -211,11 +211,8 @@ function validateEnvironmentVariables() {
   // Required for all environments
   const requiredAlways = [];
 
-  // Required for preview and production
-  const requiredNonDev = [
-    'NEXTAUTH_SECRET',
-    'NEXTAUTH_URL'
-  ];
+  // Required for preview and production (only if auth is enabled)
+  const requiredNonDev = [];
 
   // Required for production only
   const requiredProd = [
