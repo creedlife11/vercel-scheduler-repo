@@ -80,7 +80,8 @@ function generateEnhancedSchedule(
       const available = engineers.filter(eng => !onLeaveToday.includes(eng));
       
       // Enhanced backfill logic for insufficient coverage
-      let working = expectedWorking.filter(eng => !onLeaveToday.includes(eng));
+      const initialWorking = expectedWorking.filter(eng => !onLeaveToday.includes(eng));
+      let working = [...initialWorking]; // Explicitly mutable array
       const minRequired = isWeekday ? 3 : 1;
       
       if (working.length < minRequired && available.length > working.length) {
@@ -93,7 +94,7 @@ function generateEnhancedSchedule(
           const needed = Math.min(minRequired - working.length, backfillCandidates.length);
           const selected = backfillCandidates.slice(0, needed);
           
-          working.push(...selected);
+          working = [...working, ...selected]; // Explicit reassignment
           
           decisionLog.push({
             date: dateStr,
