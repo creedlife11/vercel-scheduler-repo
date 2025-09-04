@@ -86,12 +86,23 @@ class ScheduleMetadata:
 
 
 @dataclass
+class WeekendCompensation:
+    """Track compensatory time off for weekend workers."""
+    engineer: str
+    weekend_date: date
+    compensation_dates: List[date]
+    pattern_type: str  # 'A' or 'B'
+
+
+@dataclass
 class ScheduleResult:
     """Complete schedule result with all associated data."""
     schedule_data: Dict[str, Any]
     fairness_report: FairnessReport
     decision_log: List[DecisionEntry]
     metadata: ScheduleMetadata
+    weekend_compensation_tracking: List[WeekendCompensation] = field(default_factory=list)
+    fairness_insights: List[str] = field(default_factory=list)
     schema_version: str = "2.0"
 
 

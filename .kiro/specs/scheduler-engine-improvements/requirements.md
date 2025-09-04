@@ -2,105 +2,102 @@
 
 ## Introduction
 
-This feature enhances the existing team scheduler application with robust testing, improved data integrity, better UX, and enterprise-grade reliability features. The focus is on making the scheduling engine bulletproof while adding valuable insights and user experience improvements.
+This feature enhances the existing team scheduler application with improved business logic for weekend shifts, on-call rotations, daily role assignments, and leave management. The focus is on building upon the current implementation to add proper scheduling rules while maintaining fairness tracking and data integrity. The current system already has basic rotation and infrastructure - these requirements define the next level of sophistication.
 
 ## Requirements
 
-### Requirement 1: Data Integrity and Export Reliability
+### Requirement 1: Enhanced Weekend Shift Logic
 
-**User Story:** As a team lead, I want guaranteed data consistency across all export formats so that I can trust the scheduling output regardless of format.
-
-#### Acceptance Criteria
-
-1. WHEN generating any schedule export THEN the system SHALL ensure every CSV row has the exact expected column count
-2. WHEN exporting data THEN all Status fields SHALL only contain values from {WORK, OFF, LEAVE, ""} and never engineer names
-3. WHEN listing engineers THEN Engineer columns (2-6) SHALL always contain known engineer names and never time strings
-4. WHEN generating exports THEN the system SHALL create CSV/XLSX from a single JSON source of truth
-5. WHEN writing CSV THEN the system SHALL use explicit headers, quote values per RFC 4180, and include UTF-8 BOM
-6. WHEN encountering special characters THEN the system SHALL automatically escape commas/parentheses in labels
-7. WHEN generating any export THEN the system SHALL include a schemaVersion for compatibility tracking
-
-### Requirement 2: Comprehensive Testing and Validation
-
-**User Story:** As a developer, I want comprehensive regression tests so that scheduling bugs cannot reoccur and data integrity is guaranteed.
+**User Story:** As a team manager, I want weekend workers to have consistent patterns with proper compensation days so that weekend coverage is fair and predictable.
 
 #### Acceptance Criteria
 
-1. WHEN running tests THEN the system SHALL assert exact CSV column counts for every generated row
-2. WHEN validating status fields THEN tests SHALL verify no engineer names appear in status columns
-3. WHEN checking engineer assignments THEN tests SHALL confirm all engineer columns contain valid names
-4. WHEN testing edge cases THEN the system SHALL validate leave handling, weekend patterns, and role assignments
-5. WHEN running CI/CD THEN both Node.js and Python test suites SHALL pass before deployment
-6. WHEN measuring coverage THEN the scheduling core SHALL maintain ≥90% test coverage
+1. WHEN an engineer works weekend THEN they SHALL work consecutive Saturday and Sunday shifts
+2. WHEN working weekend THEN engineer SHALL get compensatory time off during the week
+3. WHEN assigning weekend shifts THEN the system SHALL rotate fairly among all engineers using existing rotation logic
+4. WHEN displaying schedules THEN weekend patterns SHALL be clearly marked and distinguishable
+5. WHEN calculating fairness THEN weekend work SHALL be weighted appropriately in workload calculations
 
-### Requirement 3: Dual Validation System
+### Requirement 2: Improved On-Call Assignment Rules
 
-**User Story:** As a user, I want input validation in both UI and API so that I get immediate feedback and the system remains secure.
-
-#### Acceptance Criteria
-
-1. WHEN entering data in UI THEN the system SHALL validate using Zod schemas with immediate feedback
-2. WHEN receiving API requests THEN the system SHALL validate using Pydantic or equivalent Python validation
-3. WHEN validating engineers THEN the system SHALL enforce unique names and proper formatting
-4. WHEN selecting dates THEN the system SHALL ensure Sunday starts or offer snap-to-Sunday option
-5. WHEN setting parameters THEN the system SHALL enforce reasonable bounds for weeks and other inputs
-6. WHEN processing names THEN the system SHALL trim whitespace, allow diacritics, and warn on case-only duplicates
-
-### Requirement 4: Fairness Analysis and Transparency
-
-**User Story:** As a team manager, I want visibility into scheduling fairness and decision-making so that I can ensure equitable work distribution.
+**User Story:** As a team lead, I want on-call engineers to have clear weekday assignments with smart conflict avoidance so that workload is properly distributed.
 
 #### Acceptance Criteria
 
-1. WHEN generating schedules THEN the system SHALL produce a fairness report with per-engineer role counts
-2. WHEN calculating fairness THEN the system SHALL show max-min deltas and equity scores
-3. WHEN making scheduling decisions THEN the system SHALL log daily decision rationale
-4. WHEN handling conflicts THEN the system SHALL record exclusions and backfill decisions
-5. WHEN presenting results THEN the system SHALL display fairness metrics alongside schedule data
+1. WHEN an engineer works on-call THEN they SHALL work Monday through Friday weekdays only
+2. WHEN assigning on-call THEN the system SHALL avoid assigning weekend workers when possible
+3. WHEN assigning on-call THEN the system SHALL use existing rotation logic with conflict avoidance
+4. WHEN scheduling conflicts arise THEN the system SHALL log decisions and provide alternatives
+5. WHEN tracking fairness THEN on-call assignments SHALL be counted in workload calculations
 
-### Requirement 5: Enhanced User Experience
+### Requirement 3: Enhanced Early Shift Assignment
 
-**User Story:** As a scheduler user, I want intuitive tools and rich output options so that I can efficiently manage team schedules.
-
-#### Acceptance Criteria
-
-1. WHEN generating schedules THEN the system SHALL provide tabbed artifact panel with multiple format options
-2. WHEN selecting dates THEN the system SHALL offer smart date picker with Sunday snapping
-3. WHEN managing leave THEN the system SHALL support CSV/XLSX import with conflict preview
-4. WHEN configuring rules THEN the system SHALL support preset bundles for common scenarios
-5. WHEN downloading files THEN the system SHALL use descriptive filenames with date and configuration info
-
-### Requirement 6: Reliability and Monitoring
-
-**User Story:** As a system administrator, I want comprehensive logging and health monitoring so that I can ensure system reliability and debug issues effectively.
+**User Story:** As a scheduler, I want exactly two engineers on early shift each weekday with the on-call engineer always included so that morning coverage is adequate and consistent.
 
 #### Acceptance Criteria
 
-1. WHEN processing requests THEN the system SHALL log structured data with requestId and timings
-2. WHEN errors occur THEN the system SHALL surface requestId in user-facing error messages
-3. WHEN checking system health THEN the system SHALL provide /api/healthz and /api/readyz endpoints
-4. WHEN monitoring performance THEN the system SHALL track input sizes and processing metrics
-5. WHEN validating outputs THEN the system SHALL verify scheduling invariants and log violations
+1. WHEN assigning early shifts THEN exactly two engineers SHALL work early each weekday
+2. WHEN selecting early shift workers THEN the weekday on-call engineer SHALL always be one of the two
+3. WHEN choosing the second early worker THEN system SHALL select from remaining available engineers fairly
+4. WHEN tracking assignments THEN early shift work SHALL be counted in fairness calculations
+5. WHEN displaying schedules THEN early shift times SHALL be clearly indicated (06:45-15:45)
 
-### Requirement 7: Security and Multi-tenancy Foundation
+### Requirement 4: Enhanced Daily Role Rotation
 
-**User Story:** As a security-conscious organization, I want proper authentication and data isolation so that team data remains secure and separated.
-
-#### Acceptance Criteria
-
-1. WHEN accessing the system THEN users SHALL authenticate via Auth.js or Clerk
-2. WHEN managing permissions THEN the system SHALL support Viewer/Editor/Admin roles
-3. WHEN storing data THEN the system SHALL isolate artifacts per team
-4. WHEN logging information THEN the system SHALL hash engineer names for privacy
-5. WHEN processing requests THEN the system SHALL enforce body size and week limits
-
-### Requirement 8: API Documentation and Standards
-
-**User Story:** As an API consumer, I want comprehensive documentation and standardized responses so that I can integrate reliably with the scheduling system.
+**User Story:** As a team coordinator, I want chat and appointments roles to rotate daily with improved logic so that distribution is fair and predictable.
 
 #### Acceptance Criteria
 
-1. WHEN documenting the API THEN the system SHALL provide OpenAPI specification with examples
-2. WHEN handling validation errors THEN the system SHALL return structured 422 responses
-3. WHEN providing examples THEN the documentation SHALL include concrete request/response samples
-4. WHEN describing limitations THEN the system SHALL document known constraints and boundaries
+1. WHEN assigning chat role THEN it SHALL rotate daily between engineers during weekdays (Mon-Fri)
+2. WHEN assigning appointments role THEN it SHALL rotate daily between engineers during weekdays (Mon-Fri)
+3. WHEN rotating roles THEN system SHALL build upon existing rotation seeds and logic
+4. WHEN engineer is unavailable THEN system SHALL skip to next available engineer in rotation
+5. WHEN tracking assignments THEN daily role assignments SHALL be counted in enhanced fairness metrics
+
+### Requirement 5: Improved Schedule Display and Role Clarity
+
+**User Story:** As a team member, I want clear role assignments and schedule display so that everyone knows their responsibilities.
+
+#### Acceptance Criteria
+
+1. WHEN displaying schedules THEN all role assignments SHALL be clearly visible
+2. WHEN showing engineer status THEN WORK/OFF/LEAVE status SHALL be accurate
+3. WHEN displaying shifts THEN shift times SHALL be clearly indicated (06:45-15:45 vs 08:00-17:00)
+4. WHEN tracking workload THEN all assignments SHALL be included in fairness calculations
+5. WHEN exporting schedules THEN format SHALL be consistent and readable
+
+### Requirement 6: Enhanced Leave Management System
+
+**User Story:** As a team manager, I want improved leave handling with smart backfill logic so that schedules adapt gracefully to absences.
+
+#### Acceptance Criteria
+
+1. WHEN adding leave for an engineer THEN the system SHALL automatically handle their unavailability
+2. WHEN reassigning due to leave THEN the system SHALL use intelligent backfill logic
+3. WHEN calculating fairness THEN leave days SHALL NOT count against an engineer's workload
+4. WHEN multiple engineers are on leave THEN the system SHALL find adequate coverage or warn about insufficient staffing
+5. WHEN leave creates conflicts THEN the system SHALL log decisions and provide alternative suggestions
+
+### Requirement 7: Enhanced Fairness Tracking and Analysis
+
+**User Story:** As a team lead, I want comprehensive fairness analysis that shows equitable work distribution so that I can ensure no engineer is consistently overloaded.
+
+#### Acceptance Criteria
+
+1. WHEN generating schedules THEN the system SHALL calculate detailed fairness metrics using Gini coefficient
+2. WHEN calculating fairness THEN the system SHALL consider weekend work, on-call, early shifts, and daily roles
+3. WHEN displaying results THEN the system SHALL show comprehensive fairness reports with actionable insights
+4. WHEN analyzing distribution THEN the system SHALL identify engineers with high/low assignment counts
+5. WHEN imbalances are detected THEN the system SHALL provide specific suggestions for improvement
+
+### Requirement 8: Enhanced Decision Logging and Transparency
+
+**User Story:** As a scheduler user, I want detailed decision logging and transparency so that I can understand how assignments were made and troubleshoot issues.
+
+#### Acceptance Criteria
+
+1. WHEN generating schedules THEN the system SHALL log all assignment decisions with rationale
+2. WHEN making role assignments THEN the system SHALL record alternatives considered
+3. WHEN conflicts occur THEN the system SHALL log conflict resolution strategies
+4. WHEN displaying results THEN the system SHALL provide decision logs and fairness insights
+5. WHEN exporting data THEN the system SHALL include comprehensive metadata and decision history
