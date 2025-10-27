@@ -74,24 +74,35 @@ export default function Home() {
       const results: any = {};
       
       for (const fmt of formats) {
-        const res = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, format: fmt })
-        });
-        
-        if (!res.ok) {
-          const txt = await res.text();
-          throw new Error(`Failed to generate ${fmt}: ${txt}`);
+        try {
+          const res = await fetch("/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...payload, format: fmt })
+          });
+          
+          if (!res.ok) {
+            const txt = await res.text();
+            console.warn(`Failed to generate ${fmt}: ${txt}`);
+            continue; // Skip this format but continue with others
+          }
+          
+          if (fmt === 'json') {
+            results[fmt] = await res.json();
+          } else if (fmt === 'xlsx') {
+            results[fmt] = await res.blob();
+          } else {
+            results[fmt] = await res.text();
+          }
+        } catch (error) {
+          console.warn(`Error generating ${fmt}:`, error);
+          // Continue with other formats
         }
-        
-        if (fmt === 'json') {
-          results[fmt] = await res.json();
-        } else if (fmt === 'xlsx') {
-          results[fmt] = await res.blob();
-        } else {
-          results[fmt] = await res.text();
-        }
+      }
+      
+      // Ensure we have at least one successful format
+      if (Object.keys(results).length === 0) {
+        throw new Error('Failed to generate any format');
       }
       
       // Extract fairness report and decision log from JSON if available

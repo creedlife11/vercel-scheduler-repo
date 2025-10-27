@@ -236,8 +236,12 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       });
     }
 
+    // Ensure seeds have default values
+    const defaultSeeds = { weekend: 0, chat: 0, oncall: 1, appointments: 2, early: 0 };
+    const finalSeeds = { ...defaultSeeds, ...(seeds || {}) };
+
     // Generate enhanced schedule with backfill integration
-    const scheduleData = generateEnhancedSchedule(engineers, start_sunday, weeks, seeds || {}, leave);
+    const scheduleData = generateEnhancedSchedule(engineers, start_sunday, weeks, finalSeeds, leave);
 
     if (format === 'json') {
       res.setHeader('Content-Type', 'application/json');
@@ -247,10 +251,16 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="enhanced-schedule.csv"');
       return res.status(200).send(csv);
+    } else if (format === 'xlsx') {
+      // For now, return CSV data with xlsx content type as a workaround
+      const csv = generateCSV(scheduleData);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename="enhanced-schedule.xlsx"');
+      return res.status(200).send(csv);
     } else {
       return res.status(400).json({ 
         error: 'Unsupported format',
-        details: 'Supported formats: csv, json'
+        details: 'Supported formats: csv, json, xlsx'
       });
     }
 
