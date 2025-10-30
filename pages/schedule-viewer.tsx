@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
 import Papa from 'papaparse';
+import CalendarScheduleView from '../lib/components/CalendarScheduleView';
+import ResourceTimelineView from '../lib/components/ResourceTimelineView';
 
 interface ScheduleEntry {
   Date: string;
@@ -48,7 +50,7 @@ const ROLE_COLORS = {
 const ScheduleViewer: React.FC = () => {
   const [scheduleData, setScheduleData] = useState<ScheduleEntry[]>([]);
   const [selectedEngineer, setSelectedEngineer] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'calendar' | 'dashboard' | 'stats'>('dashboard');
+  const [viewMode, setViewMode] = useState<'calendar' | 'dashboard' | 'stats' | 'fullcalendar' | 'timeline'>('dashboard');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [selectedRole, setSelectedRole] = useState<string>('all');
@@ -1238,6 +1240,16 @@ const ScheduleViewer: React.FC = () => {
                       📈 Dashboard
                     </button>
                     <button
+                      onClick={() => setViewMode('fullcalendar')}
+                      className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 ${
+                        viewMode === 'fullcalendar' 
+                          ? 'bg-white text-blue-600 shadow-md' 
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      📅 Calendar
+                    </button>
+                    <button
                       onClick={() => setViewMode('calendar')}
                       className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 ${
                         viewMode === 'calendar' 
@@ -1245,7 +1257,17 @@ const ScheduleViewer: React.FC = () => {
                           : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
-                      📅 Calendar
+                      📊 Grid
+                    </button>
+                    <button
+                      onClick={() => setViewMode('timeline')}
+                      className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 ${
+                        viewMode === 'timeline' 
+                          ? 'bg-white text-blue-600 shadow-md' 
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      👥 Timeline
                     </button>
                     <button
                       onClick={() => setViewMode('stats')}
@@ -1260,7 +1282,7 @@ const ScheduleViewer: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Calendar View Toggle (only show in calendar mode) */}
+                {/* Calendar View Toggle (only show in grid calendar mode) */}
                 {viewMode === 'calendar' && (
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -1385,11 +1407,41 @@ const ScheduleViewer: React.FC = () => {
         {scheduleData.length > 0 && (
           <div>
             {viewMode === 'dashboard' && renderDashboardView()}
+            {viewMode === 'fullcalendar' && (
+              <div>
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                    📅 Professional Calendar
+                    {selectedEngineer !== 'all' && ` - ${selectedEngineer}`}
+                  </h2>
+                  <p className="text-gray-600">
+                    {selectedEngineer === 'all' 
+                      ? `Full-screen calendar view with ${filteredData.length} entries`
+                      : `Individual calendar for ${selectedEngineer} with ${filteredData.length} assignments`
+                    }
+                  </p>
+                </div>
+                <CalendarScheduleView
+                  scheduleData={filteredData}
+                  engineerColorMap={engineerColorMap}
+                  selectedEngineer={selectedEngineer}
+                  onEventClick={(event) => {
+                    // Find the corresponding schedule entry
+                    const entry = filteredData.find(e => 
+                      e.Date === event.start.toISOString().split('T')[0]
+                    );
+                    if (entry) {
+                      setSelectedDay(entry);
+                    }
+                  }}
+                />
+              </div>
+            )}
             {viewMode === 'calendar' && (
               <div>
                 <div className="mb-6">
                   <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                    📅 Schedule Calendar
+                    📊 Schedule Grid
                     {selectedEngineer !== 'all' && ` - ${selectedEngineer}`}
                   </h2>
                   <p className="text-gray-600">
@@ -1400,6 +1452,28 @@ const ScheduleViewer: React.FC = () => {
                   </p>
                 </div>
                 {renderCalendarView()}
+              </div>
+            )}
+            {viewMode === 'timeline' && (
+              <div>
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                    👥 Resource Timeline
+                    {selectedEngineer !== 'all' && ` - ${selectedEngineer}`}
+                  </h2>
+                  <p className="text-gray-600">
+                    {selectedEngineer === 'all' 
+                      ? `Resource timeline showing all engineers across time`
+                      : `Individual timeline for ${selectedEngineer}`
+                    }
+                  </p>
+                </div>
+                <ResourceTimelineView
+                  scheduleData={filteredData}
+                  engineerColorMap={engineerColorMap}
+                  selectedEngineer={selectedEngineer}
+                  onDayClick={(entry) => setSelectedDay(entry)}
+                />
               </div>
             )}
             {viewMode === 'stats' && (

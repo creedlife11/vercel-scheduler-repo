@@ -3,6 +3,5 @@
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
   "/api/generate": "pages/api/generate.js",
-  "/": "pages/index.js",
   "/schedule-viewer": "pages/schedule-viewer.js"
 }
