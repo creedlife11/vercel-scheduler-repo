@@ -53,6 +53,10 @@ const ScheduleViewer: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [selectedRole, setSelectedRole] = useState<string>('all');
   const [calendarView, setCalendarView] = useState<'grid' | 'timeline'>('grid');
+  const [showConflictsOnly, setShowConflictsOnly] = useState(false);
+  const [showWeekendsOnly, setShowWeekendsOnly] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<ScheduleEntry | null>(null);
+  const [hoveredCell, setHoveredCell] = useState<{entry: ScheduleEntry, role: string} | null>(null);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -161,7 +165,7 @@ const ScheduleViewer: React.FC = () => {
     return { engineer, entries, stats };
   };
 
-  // Filter data based on selected engineer and role
+  // Filter data based on selected engineer, role, and advanced filters
   const filteredData = useMemo(() => {
     let data = scheduleData;
     
@@ -184,8 +188,25 @@ const ScheduleViewer: React.FC = () => {
       });
     }
     
+    // Filter by weekends only
+    if (showWeekendsOnly) {
+      data = data.filter(entry => 
+        entry.Day === 'Saturday' || entry.Day === 'Sunday'
+      );
+    }
+    
+    // Filter by conflicts only (basic conflict detection)
+    if (showConflictsOnly) {
+      data = data.filter(entry => {
+        // Check for potential conflicts (same engineer in multiple roles)
+        const roles = [entry.Weekend, entry.Chat, entry.OnCall, entry.Appointments, entry.Early].filter(Boolean);
+        const uniqueRoles = new Set(roles);
+        return roles.length > uniqueRoles.size; // Has duplicate engineers
+      });
+    }
+    
     return data;
-  }, [scheduleData, selectedEngineer, selectedRole]);
+  }, [scheduleData, selectedEngineer, selectedRole, showWeekendsOnly, showConflictsOnly]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -552,9 +573,29 @@ const ScheduleViewer: React.FC = () => {
             </div>
           </div>
 
+          {/* Role Legend */}
+          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-gray-700">Role Legend</h4>
+              <div className="flex items-center gap-4 text-xs text-gray-500">
+                <span>💡 Hover cells for details</span>
+                <span>🖱️ Click for full day info</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {Object.entries(ROLE_COLORS).map(([role, config]) => (
+                <div key={role} className={`flex items-center gap-2 px-3 py-1 rounded-full ${config.bg} ${config.text} border border-gray-200`}>
+                  <span className="text-lg">{config.icon}</span>
+                  <span className="text-sm font-medium">{role}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* CSS Grid Calendar Table */}
           <div className="p-6">
-            <div className="calendar-grid">
+            <div className="calendar-container">
+              <div className="calendar-grid">
               {/* Header Row */}
               <div className="calendar-header">
                 <div className="header-cell date-header">
@@ -624,7 +665,12 @@ const ScheduleViewer: React.FC = () => {
                     </div>
 
                     {/* Role Cells */}
-                    <div className="calendar-cell role-cell weekend-cell">
+                    <div 
+                      className="calendar-cell role-cell weekend-cell"
+                      onMouseEnter={() => entry.Weekend && setHoveredCell({entry, role: 'Weekend'})}
+                      onMouseLeave={() => setHoveredCell(null)}
+                      onClick={() => setSelectedDay(entry)}
+                    >
                       {entry.Weekend ? (
                         <div className="engineer-assignment weekend-assignment">
                           {getEngineerBadge(entry.Weekend, 'sm')}
@@ -634,7 +680,12 @@ const ScheduleViewer: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="calendar-cell role-cell chat-cell">
+                    <div 
+                      className="calendar-cell role-cell chat-cell"
+                      onMouseEnter={() => entry.Chat && setHoveredCell({entry, role: 'Chat'})}
+                      onMouseLeave={() => setHoveredCell(null)}
+                      onClick={() => setSelectedDay(entry)}
+                    >
                       {entry.Chat ? (
                         <div className="engineer-assignment chat-assignment">
                           {getEngineerBadge(entry.Chat, 'sm')}
@@ -644,7 +695,12 @@ const ScheduleViewer: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="calendar-cell role-cell oncall-cell">
+                    <div 
+                      className="calendar-cell role-cell oncall-cell"
+                      onMouseEnter={() => entry.OnCall && setHoveredCell({entry, role: 'OnCall'})}
+                      onMouseLeave={() => setHoveredCell(null)}
+                      onClick={() => setSelectedDay(entry)}
+                    >
                       {entry.OnCall ? (
                         <div className="engineer-assignment oncall-assignment">
                           {getEngineerBadge(entry.OnCall, 'sm')}
@@ -654,7 +710,12 @@ const ScheduleViewer: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="calendar-cell role-cell appointments-cell">
+                    <div 
+                      className="calendar-cell role-cell appointments-cell"
+                      onMouseEnter={() => entry.Appointments && setHoveredCell({entry, role: 'Appointments'})}
+                      onMouseLeave={() => setHoveredCell(null)}
+                      onClick={() => setSelectedDay(entry)}
+                    >
                       {entry.Appointments ? (
                         <div className="engineer-assignment appointments-assignment">
                           {getEngineerBadge(entry.Appointments, 'sm')}
@@ -664,7 +725,12 @@ const ScheduleViewer: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="calendar-cell role-cell early-cell">
+                    <div 
+                      className="calendar-cell role-cell early-cell"
+                      onMouseEnter={() => entry.Early && setHoveredCell({entry, role: 'Early'})}
+                      onMouseLeave={() => setHoveredCell(null)}
+                      onClick={() => setSelectedDay(entry)}
+                    >
                       {entry.Early ? (
                         <div className="engineer-assignment early-assignment">
                           {getEngineerBadge(entry.Early, 'sm')}
@@ -676,6 +742,7 @@ const ScheduleViewer: React.FC = () => {
                   </div>
                 );
               })}
+              </div>
             </div>
           </div>
 
@@ -778,14 +845,20 @@ const ScheduleViewer: React.FC = () => {
     <>
       {/* Enhanced Calendar CSS */}
       <style jsx>{`
+        .calendar-container {
+          position: relative;
+          overflow: auto;
+          max-height: 80vh;
+          border-radius: 12px;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
         .calendar-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr repeat(5, 1fr);
+          grid-template-columns: 200px 120px repeat(5, 150px);
           gap: 1px;
           background-color: #e5e7eb;
-          border-radius: 12px;
-          overflow: hidden;
-          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+          min-width: 1000px;
         }
 
         .calendar-header {
@@ -803,6 +876,19 @@ const ScheduleViewer: React.FC = () => {
           align-items: center;
           justify-content: center;
           min-height: 60px;
+          position: sticky;
+          top: 0;
+          z-index: 20;
+        }
+
+        .date-header, .day-header {
+          position: sticky;
+          left: 0;
+          z-index: 30;
+        }
+
+        .day-header {
+          left: 200px;
         }
 
         .date-header {
@@ -866,6 +952,18 @@ const ScheduleViewer: React.FC = () => {
         .date-cell {
           background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
           font-weight: 600;
+          position: sticky;
+          left: 0;
+          z-index: 10;
+          border-right: 2px solid #e5e7eb;
+        }
+
+        .day-cell {
+          background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+          position: sticky;
+          left: 200px;
+          z-index: 10;
+          border-right: 2px solid #e5e7eb;
         }
 
         .date-content {
@@ -1192,6 +1290,41 @@ const ScheduleViewer: React.FC = () => {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Advanced Filters Row */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex flex-wrap gap-4 items-center">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="conflicts-only"
+                      checked={showConflictsOnly}
+                      onChange={(e) => setShowConflictsOnly(e.target.checked)}
+                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                    />
+                    <label htmlFor="conflicts-only" className="text-sm font-medium text-gray-700">
+                      ⚠️ Show conflicts only
+                    </label>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="weekends-only"
+                      checked={showWeekendsOnly}
+                      onChange={(e) => setShowWeekendsOnly(e.target.checked)}
+                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                    />
+                    <label htmlFor="weekends-only" className="text-sm font-medium text-gray-700">
+                      🏖️ Show weekends only
+                    </label>
+                  </div>
+
+                  <div className="ml-auto text-xs text-gray-500">
+                    Showing {filteredData.length} of {scheduleData.length} entries
+                  </div>
+                </div>
 
                 {/* Upload New File Button */}
                 {viewMode !== 'calendar' && (
@@ -1282,6 +1415,122 @@ const ScheduleViewer: React.FC = () => {
                 {renderStatsView()}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Hover Tooltip */}
+        {hoveredCell && (
+          <div className="fixed z-50 pointer-events-none" style={{
+            left: '50%',
+            top: '20%',
+            transform: 'translateX(-50%)'
+          }}>
+            <div className="bg-black text-white px-3 py-2 rounded-lg shadow-lg text-sm max-w-xs">
+              <div className="font-semibold">{hoveredCell.role} Assignment</div>
+              <div className="text-gray-300">
+                {formatDateLong(hoveredCell.entry.Date)} ({hoveredCell.entry.Day})
+              </div>
+              <div className="mt-1">
+                Engineer: <span className="font-medium">{hoveredCell.entry[hoveredCell.role as keyof ScheduleEntry]}</span>
+              </div>
+              <div className="text-xs text-gray-400 mt-1">
+                Click for full day details
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Day Details Drawer */}
+        {selectedDay && (
+          <div className="fixed inset-0 z-50 overflow-hidden">
+            <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setSelectedDay(null)}></div>
+            <div className="absolute right-0 top-0 h-full w-96 bg-white shadow-2xl transform transition-transform duration-300">
+              <div className="h-full flex flex-col">
+                {/* Header */}
+                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-bold">{formatDateLong(selectedDay.Date)}</h3>
+                      <p className="text-indigo-100">{selectedDay.Day}</p>
+                    </div>
+                    <button
+                      onClick={() => setSelectedDay(null)}
+                      className="text-white hover:text-gray-200 text-2xl"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-6">
+                  <div className="space-y-6">
+                    <div>
+                      <h4 className="text-lg font-semibold mb-4 text-gray-900">Role Assignments</h4>
+                      <div className="space-y-3">
+                        {Object.entries(ROLE_COLORS).map(([role, config]) => {
+                          const engineer = selectedDay[role as keyof ScheduleEntry];
+                          return (
+                            <div key={role} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <span className="text-2xl">{config.icon}</span>
+                                <span className="font-medium text-gray-900">{role}</span>
+                              </div>
+                              <div>
+                                {engineer ? (
+                                  getEngineerBadge(engineer, 'sm')
+                                ) : (
+                                  <span className="text-gray-400 text-sm">Not assigned</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Day Analysis */}
+                    <div>
+                      <h4 className="text-lg font-semibold mb-4 text-gray-900">Day Analysis</h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-3 h-3 rounded-full ${
+                            selectedDay.Day === 'Saturday' || selectedDay.Day === 'Sunday' 
+                              ? 'bg-purple-500' : 'bg-blue-500'
+                          }`}></span>
+                          <span className="text-sm text-gray-600">
+                            {selectedDay.Day === 'Saturday' || selectedDay.Day === 'Sunday' ? 'Weekend day' : 'Weekday'}
+                          </span>
+                        </div>
+                        
+                        {/* Check for conflicts */}
+                        {(() => {
+                          const roles = [selectedDay.Weekend, selectedDay.Chat, selectedDay.OnCall, selectedDay.Appointments, selectedDay.Early].filter(Boolean);
+                          const uniqueRoles = new Set(roles);
+                          const hasConflicts = roles.length > uniqueRoles.size;
+                          
+                          return (
+                            <div className="flex items-center gap-2">
+                              <span className={`w-3 h-3 rounded-full ${hasConflicts ? 'bg-red-500' : 'bg-green-500'}`}></span>
+                              <span className="text-sm text-gray-600">
+                                {hasConflicts ? 'Has role conflicts' : 'No conflicts detected'}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                        
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full bg-gray-400"></span>
+                          <span className="text-sm text-gray-600">
+                            {Object.values(selectedDay).filter(v => v && v !== selectedDay.Date && v !== selectedDay.Day).length} roles assigned
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
         </div>
