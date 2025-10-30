@@ -65,8 +65,9 @@ function generateEnhancedSchedule(
     }
   }
   
-  // Track OnCall engineers by week for exclusion logic
+  // Track OnCall and Early engineers by week for exclusion logic
   const onCallByWeek: { [week: number]: string } = {};
+  const earlyByWeek: { [week: number]: string } = {};
   
   // Process all dates
   for (let dateIndex = 0; dateIndex < allDates.length; dateIndex++) {
@@ -232,7 +233,17 @@ function generateEnhancedSchedule(
         }
         daySchedule.OnCall = onCallEngineer;
         
-        // Filter out OnCall engineer from other role assignments
+        // Assign Early engineer for the week (if not already assigned)
+        let earlyEngineer: string;
+        if (earlyByWeek[currentWeek]) {
+          earlyEngineer = earlyByWeek[currentWeek];
+        } else {
+          earlyEngineer = working[(currentWeek + seeds.early) % working.length];
+          earlyByWeek[currentWeek] = earlyEngineer;
+        }
+        daySchedule.Early = earlyEngineer;
+        
+        // Filter out ONLY OnCall engineer from Chat/Appointments (Early engineer can do both)
         const nonOnCallEngineers = working.filter(eng => eng !== onCallEngineer);
         
         if (nonOnCallEngineers.length >= 1) {
@@ -240,9 +251,6 @@ function generateEnhancedSchedule(
         }
         if (nonOnCallEngineers.length >= 2) {
           daySchedule.Appointments = nonOnCallEngineers[(dayOffset + seeds.appointments) % nonOnCallEngineers.length];
-        }
-        if (nonOnCallEngineers.length >= 3) {
-          daySchedule.Early = nonOnCallEngineers[(dayOffset + seeds.early) % nonOnCallEngineers.length];
         }
         
         // Log enhanced role assignments
