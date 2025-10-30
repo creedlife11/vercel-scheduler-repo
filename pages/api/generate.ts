@@ -45,20 +45,64 @@ function generateEnhancedSchedule(
 
   const startDateObj = new Date(startDate);
   
+  // If starting on Sunday, include the previous Saturday for complete weekend pairing
+  const includesPreviousSaturday = startDateObj.getDay() === 0; // Sunday = 0
+  const allDates: Date[] = [];
+  
+  // Add previous Saturday if starting on Sunday
+  if (includesPreviousSaturday) {
+    const previousSaturday = new Date(startDateObj);
+    previousSaturday.setDate(startDateObj.getDate() - 1);
+    allDates.push(previousSaturday);
+  }
+  
+  // Add all the regular schedule dates
   for (let week = 0; week < weeks; week++) {
     for (let day = 0; day < 7; day++) {
       const currentDate = new Date(startDateObj);
       currentDate.setDate(startDateObj.getDate() + (week * 7) + day);
-      const dateStr = currentDate.toISOString().split('T')[0];
-      
-      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const dayName = dayNames[day];
-      const isWeekday = day >= 1 && day <= 5;
+      allDates.push(currentDate);
+    }
+  }
+  
+  // Process all dates
+  for (let dateIndex = 0; dateIndex < allDates.length; dateIndex++) {
+    const currentDate = allDates[dateIndex];
+    const dateStr = currentDate.toISOString().split('T')[0];
+    const day = currentDate.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+    
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayName = dayNames[day];
+    const isWeekday = day >= 1 && day <= 5;
       
       // Determine who should be working
       const expectedWorking = engineers.filter((_, idx) => {
         // Weekend rotation: same engineer covers both Saturday and Sunday
-        if (!isWeekday) return (week + seeds.weekend) % engineers.length === idx;
+        if (!isWeekday) {
+          // For weekend days, calculate which weekend pair this belongs to
+          let weekendWeek: number;
+          
+          if (day === 6) { // Saturday
+            // Saturday pairs with the next day (Sunday)
+            const nextDay = new Date(currentDate);
+            nextDay.setDate(currentDate.getDate() + 1);
+            
+            if (includesPreviousSaturday && dateIndex === 0) {
+              // This is the Saturday before the start Sunday - belongs to week 0
+              weekendWeek = 0;
+            } else {
+              // Calculate based on the Sunday that follows this Saturday
+              const daysSinceSundayStart = Math.floor((nextDay.getTime() - startDateObj.getTime()) / (24 * 60 * 60 * 1000));
+              weekendWeek = Math.floor(daysSinceSundayStart / 7);
+            }
+          } else { // Sunday (day === 0)
+            // Calculate based on this Sunday
+            const daysSinceSundayStart = Math.floor((currentDate.getTime() - startDateObj.getTime()) / (24 * 60 * 60 * 1000));
+            weekendWeek = Math.floor(daysSinceSundayStart / 7);
+          }
+          
+          return (weekendWeek + seeds.weekend) % engineers.length === idx;
+        }
         return true; // All engineers available for weekdays initially
       });
       
@@ -135,6 +179,9 @@ function generateEnhancedSchedule(
         });
       } else if (isWeekday && working.length > 0) {
         // Weekday role assignments with rotation
+        // Calculate the week and day offset for weekday assignments
+        const daysSinceStart = Math.floor((currentDate.getTime() - startDateObj.getTime()) / (24 * 60 * 60 * 1000));
+        const week = Math.floor(daysSinceStart / 7);
         const dayOffset = (week * 7) + day;
         
         if (working.length >= 1) {
@@ -171,7 +218,6 @@ function generateEnhancedSchedule(
       }
       
       schedule.push(daySchedule);
-    }
   }
   
   // Generate fairness report
