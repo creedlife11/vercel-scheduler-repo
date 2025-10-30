@@ -83,47 +83,67 @@ function generateEnhancedSchedule(
     const currentWeek = Math.floor(daysSinceStart / 7);
       
       // Determine who should be working
-      const expectedWorking = engineers.filter((_, idx) => {
-        const engineer = engineers[idx];
-        
+      let expectedWorking: string[] = [];
+      
+      if (!isWeekday) {
         // Weekend rotation: same engineer covers both Saturday and Sunday
-        if (!isWeekday) {
-          // For weekend days, calculate which weekend pair this belongs to
-          let weekendWeek: number;
+        // Calculate which weekend pair this belongs to
+        let weekendWeek: number;
+        
+        if (day === 6) { // Saturday
+          // Saturday pairs with the next day (Sunday)
+          const nextDay = new Date(currentDate);
+          nextDay.setDate(currentDate.getDate() + 1);
           
-          if (day === 6) { // Saturday
-            // Saturday pairs with the next day (Sunday)
-            const nextDay = new Date(currentDate);
-            nextDay.setDate(currentDate.getDate() + 1);
-            
-            if (includesPreviousSaturday && dateIndex === 0) {
-              // This is the Saturday before the start Sunday - belongs to week 0
-              weekendWeek = 0;
-            } else {
-              // Calculate based on the Sunday that follows this Saturday
-              const daysSinceSundayStart = Math.floor((nextDay.getTime() - startDateObj.getTime()) / (24 * 60 * 60 * 1000));
-              weekendWeek = Math.floor(daysSinceSundayStart / 7);
-            }
-          } else { // Sunday (day === 0)
-            // Calculate based on this Sunday
-            const daysSinceSundayStart = Math.floor((currentDate.getTime() - startDateObj.getTime()) / (24 * 60 * 60 * 1000));
+          if (includesPreviousSaturday && dateIndex === 0) {
+            // This is the Saturday before the start Sunday - belongs to week 0
+            weekendWeek = 0;
+          } else {
+            // Calculate based on the Sunday that follows this Saturday
+            const daysSinceSundayStart = Math.floor((nextDay.getTime() - startDateObj.getTime()) / (24 * 60 * 60 * 1000));
             weekendWeek = Math.floor(daysSinceSundayStart / 7);
           }
-          
-          // Check if this engineer should be assigned based on rotation
-          const shouldBeAssigned = (weekendWeek + seeds.weekend) % engineers.length === idx;
-          
-          // Exclude if this engineer was OnCall in the previous week
-          const previousWeek = weekendWeek - 1;
-          const previousOnCall = onCallByWeek[previousWeek];
-          if (previousOnCall && previousOnCall === engineer) {
-            return false; // Cannot work weekend after being OnCall
+        } else { // Sunday (day === 0)
+          // Calculate based on this Sunday
+          const daysSinceSundayStart = Math.floor((currentDate.getTime() - startDateObj.getTime()) / (24 * 60 * 60 * 1000));
+          weekendWeek = Math.floor(daysSinceSundayStart / 7);
+        }
+        
+        // Find the intended engineer based on rotation
+        let intendedEngineerIdx = (weekendWeek + seeds.weekend) % engineers.length;
+        let intendedEngineer = engineers[intendedEngineerIdx];
+        
+        // Check if intended engineer was OnCall in previous week
+        const previousWeek = weekendWeek - 1;
+        const previousOnCall = onCallByWeek[previousWeek];
+        
+        if (previousOnCall && previousOnCall === intendedEngineer) {
+          // Find next available engineer who wasn't OnCall in previous week
+          for (let i = 1; i < engineers.length; i++) {
+            const nextIdx = (intendedEngineerIdx + i) % engineers.length;
+            const nextEngineer = engineers[nextIdx];
+            if (nextEngineer !== previousOnCall) {
+              intendedEngineer = nextEngineer;
+              break;
+            }
           }
           
-          return shouldBeAssigned;
+          // Log the exclusion and fallback
+          decisionLog.push({
+            date: dateStr,
+            decision_type: 'weekend_oncall_exclusion',
+            affected_engineers: [previousOnCall],
+            reason: `${previousOnCall} excluded from weekend (was OnCall in previous week), assigned ${intendedEngineer} instead`,
+            alternatives_considered: [engineers[intendedEngineerIdx]],
+            timestamp: new Date().toISOString()
+          });
         }
-        return true; // All engineers available for weekdays initially
-      });
+        
+        expectedWorking = [intendedEngineer];
+      } else {
+        // All engineers available for weekdays initially
+        expectedWorking = [...engineers];
+      }
       
       // Find who's on leave today
       const onLeaveToday = engineers.filter(eng => leaveMap[eng].has(dateStr));
