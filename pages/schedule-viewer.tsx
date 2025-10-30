@@ -51,6 +51,8 @@ const ScheduleViewer: React.FC = () => {
   const [viewMode, setViewMode] = useState<'calendar' | 'dashboard' | 'stats'>('dashboard');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [selectedRole, setSelectedRole] = useState<string>('all');
+  const [calendarView, setCalendarView] = useState<'grid' | 'timeline'>('grid');
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -159,16 +161,31 @@ const ScheduleViewer: React.FC = () => {
     return { engineer, entries, stats };
   };
 
-  // Filter data based on selected engineer
-  const filteredData = selectedEngineer === 'all' 
-    ? scheduleData 
-    : scheduleData.filter(entry => 
+  // Filter data based on selected engineer and role
+  const filteredData = useMemo(() => {
+    let data = scheduleData;
+    
+    // Filter by engineer
+    if (selectedEngineer !== 'all') {
+      data = data.filter(entry => 
         entry.Weekend === selectedEngineer ||
         entry.Chat === selectedEngineer ||
         entry.OnCall === selectedEngineer ||
         entry.Appointments === selectedEngineer ||
         entry.Early === selectedEngineer
       );
+    }
+    
+    // Filter by role
+    if (selectedRole !== 'all') {
+      data = data.filter(entry => {
+        const roleValue = entry[selectedRole as keyof ScheduleEntry];
+        return roleValue && roleValue !== '';
+      });
+    }
+    
+    return data;
+  }, [scheduleData, selectedEngineer, selectedRole]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -399,58 +416,280 @@ const ScheduleViewer: React.FC = () => {
     }
   };
 
+  const renderTimelineView = () => {
+    // Group entries by week
+    const weekGroups = filteredData.reduce((groups, entry) => {
+      const date = new Date(entry.Date);
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - date.getDay());
+      const weekKey = weekStart.toISOString().split('T')[0];
+      
+      if (!groups[weekKey]) {
+        groups[weekKey] = [];
+      }
+      groups[weekKey].push(entry);
+      return groups;
+    }, {} as { [key: string]: ScheduleEntry[] });
+
+    return (
+      <div className="space-y-8">
+        {Object.entries(weekGroups).map(([weekStart, entries]) => {
+          const weekDate = new Date(weekStart);
+          const weekEnd = new Date(weekDate);
+          weekEnd.setDate(weekDate.getDate() + 6);
+          
+          return (
+            <div key={weekStart} className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+              {/* Week Header */}
+              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold">
+                      Week of {weekDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
+                    </h3>
+                    <p className="text-indigo-100">
+                      {weekDate.toLocaleDateString()} - {weekEnd.toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold">{entries.length}</div>
+                    <div className="text-indigo-100 text-sm">Days</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline */}
+              <div className="p-6">
+                <div className="relative">
+                  {/* Timeline Line */}
+                  <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-indigo-500 to-purple-500"></div>
+                  
+                  {/* Timeline Entries */}
+                  <div className="space-y-6">
+                    {entries.map((entry, index) => {
+                      const isWeekend = entry.Day === 'Saturday' || entry.Day === 'Sunday';
+                      const isToday = new Date(entry.Date).toDateString() === new Date().toDateString();
+                      
+                      return (
+                        <div key={index} className="relative flex items-start">
+                          {/* Timeline Dot */}
+                          <div className={`absolute left-6 w-4 h-4 rounded-full border-4 border-white shadow-lg ${
+                            isToday ? 'bg-yellow-500' : 
+                            isWeekend ? 'bg-purple-500' : 'bg-indigo-500'
+                          }`}></div>
+                          
+                          {/* Content */}
+                          <div className="ml-16 flex-1">
+                            <div className={`bg-gradient-to-r p-6 rounded-xl shadow-lg ${
+                              isToday ? 'from-yellow-50 to-yellow-100 border-2 border-yellow-300' :
+                              isWeekend ? 'from-purple-50 to-purple-100' : 'from-gray-50 to-gray-100'
+                            }`}>
+                              <div className="flex items-center justify-between mb-4">
+                                <div>
+                                  <h4 className="text-lg font-bold text-gray-900">
+                                    {formatDateLong(entry.Date)}
+                                  </h4>
+                                  <p className="text-gray-600">{entry.Day}</p>
+                                </div>
+                                {isToday && (
+                                  <span className="px-3 py-1 bg-yellow-500 text-white text-sm font-bold rounded-full">
+                                    TODAY
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {/* Role Assignments */}
+                              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                {Object.entries(ROLE_COLORS).map(([role, config]) => {
+                                  const engineer = entry[role as keyof ScheduleEntry];
+                                  return (
+                                    <div key={role} className="text-center">
+                                      <div className="text-2xl mb-1">{config.icon}</div>
+                                      <div className="text-xs font-medium text-gray-600 mb-1">{role}</div>
+                                      {engineer ? (
+                                        getEngineerBadge(engineer, 'sm')
+                                      ) : (
+                                        <span className="text-gray-400 text-sm">-</span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderCalendarView = () => {
+    if (calendarView === 'timeline') {
+      return renderTimelineView();
+    }
+
     if (selectedEngineer === 'all') {
       return (
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Day</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">🏖️ Weekend</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">💬 Chat</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">🚨 OnCall</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">📅 Appointments</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">🌅 Early</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredData.map((entry, index) => {
-                  const isWeekend = entry.Day === 'Saturday' || entry.Day === 'Sunday';
-                  return (
-                    <tr key={index} className={`hover:bg-gray-50 transition-colors duration-200 ${isWeekend ? 'bg-purple-50' : ''}`}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{formatDate(entry.Date)}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          isWeekend ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {entry.Day}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {entry.Weekend ? getEngineerBadge(entry.Weekend, 'sm') : <span className="text-gray-400">-</span>}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {entry.Chat ? getEngineerBadge(entry.Chat, 'sm') : <span className="text-gray-400">-</span>}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {entry.OnCall ? getEngineerBadge(entry.OnCall, 'sm') : <span className="text-gray-400">-</span>}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {entry.Appointments ? getEngineerBadge(entry.Appointments, 'sm') : <span className="text-gray-400">-</span>}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {entry.Early ? getEngineerBadge(entry.Early, 'sm') : <span className="text-gray-400">-</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+          {/* Enhanced Calendar Header */}
+          <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-bold">📅 Schedule Calendar</h3>
+                <p className="text-indigo-100 mt-1">Complete team schedule overview</p>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-bold">{filteredData.length}</div>
+                <div className="text-indigo-100 text-sm">Total Days</div>
+              </div>
+            </div>
+          </div>
+
+          {/* CSS Grid Calendar Table */}
+          <div className="p-6">
+            <div className="calendar-grid">
+              {/* Header Row */}
+              <div className="calendar-header">
+                <div className="header-cell date-header">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">📅</span>
+                    <span>Date</span>
+                  </div>
+                </div>
+                <div className="header-cell day-header">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">📆</span>
+                    <span>Day</span>
+                  </div>
+                </div>
+                <div className="header-cell role-header weekend-header">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🏖️</span>
+                    <span>Weekend</span>
+                  </div>
+                </div>
+                <div className="header-cell role-header chat-header">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">💬</span>
+                    <span>Chat</span>
+                  </div>
+                </div>
+                <div className="header-cell role-header oncall-header">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🚨</span>
+                    <span>OnCall</span>
+                  </div>
+                </div>
+                <div className="header-cell role-header appointments-header">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">📅</span>
+                    <span>Appointments</span>
+                  </div>
+                </div>
+                <div className="header-cell role-header early-header">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🌅</span>
+                    <span>Early</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data Rows */}
+              {filteredData.map((entry, index) => {
+                const isWeekend = entry.Day === 'Saturday' || entry.Day === 'Sunday';
+                const isToday = new Date(entry.Date).toDateString() === new Date().toDateString();
+                
+                return (
+                  <div key={index} className={`calendar-row ${isWeekend ? 'weekend-row' : ''} ${isToday ? 'today-row' : ''}`}>
+                    {/* Date Cell */}
+                    <div className="calendar-cell date-cell">
+                      <div className="date-content">
+                        <div className="date-main">{formatDate(entry.Date)}</div>
+                        <div className="date-sub">{new Date(entry.Date).getDate()}</div>
+                      </div>
+                    </div>
+
+                    {/* Day Cell */}
+                    <div className="calendar-cell day-cell">
+                      <span className={`day-badge ${isWeekend ? 'weekend-badge' : 'weekday-badge'} ${isToday ? 'today-badge' : ''}`}>
+                        {entry.Day}
+                      </span>
+                    </div>
+
+                    {/* Role Cells */}
+                    <div className="calendar-cell role-cell weekend-cell">
+                      {entry.Weekend ? (
+                        <div className="engineer-assignment weekend-assignment">
+                          {getEngineerBadge(entry.Weekend, 'sm')}
+                        </div>
+                      ) : (
+                        <div className="empty-assignment">-</div>
+                      )}
+                    </div>
+
+                    <div className="calendar-cell role-cell chat-cell">
+                      {entry.Chat ? (
+                        <div className="engineer-assignment chat-assignment">
+                          {getEngineerBadge(entry.Chat, 'sm')}
+                        </div>
+                      ) : (
+                        <div className="empty-assignment">-</div>
+                      )}
+                    </div>
+
+                    <div className="calendar-cell role-cell oncall-cell">
+                      {entry.OnCall ? (
+                        <div className="engineer-assignment oncall-assignment">
+                          {getEngineerBadge(entry.OnCall, 'sm')}
+                        </div>
+                      ) : (
+                        <div className="empty-assignment">-</div>
+                      )}
+                    </div>
+
+                    <div className="calendar-cell role-cell appointments-cell">
+                      {entry.Appointments ? (
+                        <div className="engineer-assignment appointments-assignment">
+                          {getEngineerBadge(entry.Appointments, 'sm')}
+                        </div>
+                      ) : (
+                        <div className="empty-assignment">-</div>
+                      )}
+                    </div>
+
+                    <div className="calendar-cell role-cell early-cell">
+                      {entry.Early ? (
+                        <div className="engineer-assignment early-assignment">
+                          {getEngineerBadge(entry.Early, 'sm')}
+                        </div>
+                      ) : (
+                        <div className="empty-assignment">-</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Calendar Legend */}
+          <div className="bg-gray-50 p-6 border-t border-gray-200">
+            <h4 className="text-lg font-semibold mb-4 text-gray-900">Legend</h4>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {Object.entries(ROLE_COLORS).map(([role, config]) => (
+                <div key={role} className="flex items-center gap-2">
+                  <span className="text-xl">{config.icon}</span>
+                  <span className="text-sm font-medium text-gray-700">{role}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       );
@@ -462,18 +701,20 @@ const ScheduleViewer: React.FC = () => {
             if (roles.length === 0) return null;
             
             const isWeekend = entry.Day === 'Saturday' || entry.Day === 'Sunday';
+            const isToday = new Date(entry.Date).toDateString() === new Date().toDateString();
             const colors = engineerColorMap[selectedEngineer];
             
             return (
-              <div key={index} className={`bg-white p-6 rounded-xl border-2 shadow-lg hover:shadow-xl transition-all duration-300 ${colors.border} ${isWeekend ? 'ring-2 ring-purple-200' : ''}`}>
+              <div key={index} className={`bg-white p-6 rounded-xl border-2 shadow-lg hover:shadow-xl transition-all duration-300 ${colors.border} ${isWeekend ? 'ring-2 ring-purple-200' : ''} ${isToday ? 'ring-4 ring-yellow-300' : ''}`}>
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="font-bold text-xl text-gray-900">{formatDate(entry.Date)}</h3>
                       <span className={`px-3 py-1 text-sm font-semibold rounded-full ${
+                        isToday ? 'bg-yellow-100 text-yellow-800 ring-2 ring-yellow-300' :
                         isWeekend ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
                       }`}>
-                        {entry.Day}
+                        {entry.Day} {isToday ? '(Today)' : ''}
                       </span>
                     </div>
                     <p className="text-gray-600 mb-3">{formatDateLong(entry.Date)}</p>
@@ -534,8 +775,229 @@ const ScheduleViewer: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-100">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <>
+      {/* Enhanced Calendar CSS */}
+      <style jsx>{`
+        .calendar-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr repeat(5, 1fr);
+          gap: 1px;
+          background-color: #e5e7eb;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .calendar-header {
+          display: contents;
+        }
+
+        .header-cell {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          padding: 16px 12px;
+          font-weight: 600;
+          font-size: 14px;
+          text-align: center;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 60px;
+        }
+
+        .date-header {
+          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        }
+
+        .day-header {
+          background: linear-gradient(135deg, #059669 0%, #0d9488 100%);
+        }
+
+        .weekend-header {
+          background: linear-gradient(135deg, #7c2d12 0%, #a21caf 100%);
+        }
+
+        .chat-header {
+          background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+        }
+
+        .oncall-header {
+          background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+        }
+
+        .appointments-header {
+          background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+        }
+
+        .early-header {
+          background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+        }
+
+        .calendar-row {
+          display: contents;
+        }
+
+        .calendar-row:hover .calendar-cell {
+          background-color: #f8fafc;
+          transform: scale(1.02);
+          transition: all 0.2s ease;
+        }
+
+        .weekend-row .calendar-cell {
+          background: linear-gradient(135deg, #fdf4ff 0%, #f3e8ff 100%);
+        }
+
+        .today-row .calendar-cell {
+          background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+          border: 2px solid #f59e0b;
+        }
+
+        .calendar-cell {
+          background: white;
+          padding: 12px 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 60px;
+          transition: all 0.3s ease;
+          position: relative;
+        }
+
+        .date-cell {
+          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+          font-weight: 600;
+        }
+
+        .date-content {
+          text-align: center;
+        }
+
+        .date-main {
+          font-size: 14px;
+          font-weight: 600;
+          color: #1f2937;
+        }
+
+        .date-sub {
+          font-size: 20px;
+          font-weight: 800;
+          color: #4f46e5;
+          line-height: 1;
+        }
+
+        .day-cell {
+          background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+        }
+
+        .day-badge {
+          padding: 6px 12px;
+          border-radius: 20px;
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .weekday-badge {
+          background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+          color: #3730a3;
+        }
+
+        .weekend-badge {
+          background: linear-gradient(135deg, #fce7f3 0%, #f3e8ff 100%);
+          color: #86198f;
+        }
+
+        .today-badge {
+          background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+          color: #92400e;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .role-cell {
+          position: relative;
+        }
+
+        .engineer-assignment {
+          width: 100%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+
+        .empty-assignment {
+          color: #9ca3af;
+          font-size: 18px;
+          font-weight: 300;
+        }
+
+        .weekend-cell {
+          background: linear-gradient(135deg, #fdf4ff 0%, #f3e8ff 100%);
+        }
+
+        .chat-cell {
+          background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        }
+
+        .oncall-cell {
+          background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
+        }
+
+        .appointments-cell {
+          background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        }
+
+        .early-cell {
+          background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+          .calendar-grid {
+            grid-template-columns: 1fr 1fr repeat(3, 1fr);
+          }
+          
+          .appointments-cell,
+          .early-cell {
+            display: none;
+          }
+          
+          .appointments-header,
+          .early-header {
+            display: none;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .calendar-grid {
+            grid-template-columns: 1fr repeat(2, 1fr);
+          }
+          
+          .day-cell,
+          .chat-cell {
+            display: none;
+          }
+          
+          .day-header,
+          .chat-header {
+            display: none;
+          }
+        }
+
+        /* Hover Effects */
+        .calendar-cell:hover {
+          z-index: 10;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .engineer-assignment:hover {
+          transform: scale(1.1);
+          transition: transform 0.2s ease;
+        }
+      `}</style>
+
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-3 mb-4">
@@ -622,12 +1084,13 @@ const ScheduleViewer: React.FC = () => {
           </div>
         )}
 
-        {/* Controls */}
+        {/* Enhanced Controls */}
         {scheduleData.length > 0 && (
           <div className="mb-8">
             <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
-              <div className="flex flex-wrap gap-6 items-end">
-                <div className="flex-1 min-w-48">
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                {/* Engineer Filter */}
+                <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     👤 Engineer Filter
                   </label>
@@ -642,15 +1105,33 @@ const ScheduleViewer: React.FC = () => {
                     ))}
                   </select>
                 </div>
+
+                {/* Role Filter */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    🎯 Role Filter
+                  </label>
+                  <select
+                    value={selectedRole}
+                    onChange={(e) => setSelectedRole(e.target.value)}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200"
+                  >
+                    <option value="all">🌟 All Roles</option>
+                    {Object.entries(ROLE_COLORS).map(([role, config]) => (
+                      <option key={role} value={role}>{config.icon} {role}</option>
+                    ))}
+                  </select>
+                </div>
                 
-                <div className="flex-1 min-w-64">
+                {/* View Mode */}
+                <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     📊 View Mode
                   </label>
                   <div className="flex bg-gray-100 rounded-xl p-1">
                     <button
                       onClick={() => setViewMode('dashboard')}
-                      className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                      className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 ${
                         viewMode === 'dashboard' 
                           ? 'bg-white text-blue-600 shadow-md' 
                           : 'text-gray-600 hover:text-gray-900'
@@ -660,7 +1141,7 @@ const ScheduleViewer: React.FC = () => {
                     </button>
                     <button
                       onClick={() => setViewMode('calendar')}
-                      className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                      className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 ${
                         viewMode === 'calendar' 
                           ? 'bg-white text-blue-600 shadow-md' 
                           : 'text-gray-600 hover:text-gray-900'
@@ -670,30 +1151,66 @@ const ScheduleViewer: React.FC = () => {
                     </button>
                     <button
                       onClick={() => setViewMode('stats')}
-                      className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                      className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 ${
                         viewMode === 'stats' 
                           ? 'bg-white text-blue-600 shadow-md' 
                           : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
-                      📊 Statistics
+                      📊 Stats
                     </button>
                   </div>
                 </div>
 
-                <div>
-                  <button
-                    onClick={() => {
-                      setScheduleData([]);
-                      setSelectedEngineer('all');
-                      setViewMode('dashboard');
-                      setError('');
-                    }}
-                    className="px-6 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl"
-                  >
-                    🔄 Upload New File
-                  </button>
-                </div>
+                {/* Calendar View Toggle (only show in calendar mode) */}
+                {viewMode === 'calendar' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      📅 Calendar Style
+                    </label>
+                    <div className="flex bg-gray-100 rounded-xl p-1">
+                      <button
+                        onClick={() => setCalendarView('grid')}
+                        className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 ${
+                          calendarView === 'grid' 
+                            ? 'bg-white text-blue-600 shadow-md' 
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        🔲 Grid
+                      </button>
+                      <button
+                        onClick={() => setCalendarView('timeline')}
+                        className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 ${
+                          calendarView === 'timeline' 
+                            ? 'bg-white text-blue-600 shadow-md' 
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        📊 Timeline
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Upload New File Button */}
+                {viewMode !== 'calendar' && (
+                  <div className="flex items-end">
+                    <button
+                      onClick={() => {
+                        setScheduleData([]);
+                        setSelectedEngineer('all');
+                        setSelectedRole('all');
+                        setViewMode('dashboard');
+                        setCalendarView('grid');
+                        setError('');
+                      }}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl text-sm"
+                    >
+                      🔄 Upload New File
+                    </button>
+                  </div>
+                )}
               </div>
               
               {/* Quick Stats Bar */}
@@ -767,8 +1284,9 @@ const ScheduleViewer: React.FC = () => {
             )}
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
