@@ -118,7 +118,7 @@ function generateEnhancedSchedule(
           intendedEngineer = weekendAssignmentCache[weekendWeek];
         } else {
           // First time assigning this weekend - calculate with conflict prevention
-          let intendedEngineerIdx = (weekendWeek + seeds.weekend) % engineers.length;
+          const intendedEngineerIdx = (weekendWeek + seeds.weekend) % engineers.length;
           intendedEngineer = engineers[intendedEngineerIdx];
           
           // Check for consecutive weekend prevention
@@ -133,7 +133,7 @@ function generateEnhancedSchedule(
           
           // Apply exclusions: consecutive weekend prevention and OnCall conflict prevention
           const exclusions: string[] = [];
-          let exclusionReasons: string[] = [];
+          const exclusionReasons: string[] = [];
           
           if (previousWeekendEngineer && previousWeekendEngineer === intendedEngineer) {
             exclusions.push(previousWeekendEngineer);
@@ -265,7 +265,7 @@ function generateEnhancedSchedule(
           onCallEngineer = onCallByWeek[currentWeek];
         } else {
           // Find intended OnCall engineer
-          let intendedOnCallIdx = (currentWeek + seeds.oncall) % working.length;
+          const intendedOnCallIdx = (currentWeek + seeds.oncall) % working.length;
           let intendedOnCall = working[intendedOnCallIdx];
           
           // Check if intended engineer did the previous weekend (work-life balance)

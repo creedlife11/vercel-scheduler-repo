@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { validateCompleteForm, ValidationResult } from "../lib/validation";
 import { EngineerInput } from "../lib/components/EngineerInput";
 import { SmartDatePicker } from "../lib/components/SmartDatePicker";
@@ -159,7 +160,39 @@ export default function Home() {
   return (
     <AuthWrapper requiredRole="EDITOR" allowBypass={true} requireAuth={false}>
       <div style={{ maxWidth: 800, margin: "40px auto", fontFamily: "Inter, system-ui, Arial" }}>
-        <h1>Team Scheduler</h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h1>Team Scheduler</h1>
+          <div style={{ display: "flex", gap: 15 }}>
+            <Link 
+              href="/schedule-viewer" 
+              style={{ 
+                padding: "8px 16px", 
+                backgroundColor: "#3b82f6", 
+                color: "white", 
+                textDecoration: "none", 
+                borderRadius: "6px",
+                fontSize: "14px",
+                fontWeight: "500"
+              }}
+            >
+              📄 View Schedule
+            </Link>
+            <Link 
+              href="/simple" 
+              style={{ 
+                padding: "8px 16px", 
+                backgroundColor: "#6b7280", 
+                color: "white", 
+                textDecoration: "none", 
+                borderRadius: "6px",
+                fontSize: "14px",
+                fontWeight: "500"
+              }}
+            >
+              Simple UI
+            </Link>
+          </div>
+        </div>
       <p>Week starts on Sunday. Enter exactly 6 engineers with unique names.</p>
 
       <div style={{ marginBottom: 20 }}>
