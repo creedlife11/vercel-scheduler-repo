@@ -65,6 +65,9 @@ function generateEnhancedSchedule(
     }
   }
   
+  // Track OnCall engineers by week for exclusion logic
+  const onCallByWeek: { [week: number]: string } = {};
+  
   // Process all dates
   for (let dateIndex = 0; dateIndex < allDates.length; dateIndex++) {
     const currentDate = allDates[dateIndex];
@@ -74,9 +77,15 @@ function generateEnhancedSchedule(
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const dayName = dayNames[day];
     const isWeekday = day >= 1 && day <= 5;
+    
+    // Calculate current week for OnCall tracking
+    const daysSinceStart = Math.floor((currentDate.getTime() - startDateObj.getTime()) / (24 * 60 * 60 * 1000));
+    const currentWeek = Math.floor(daysSinceStart / 7);
       
       // Determine who should be working
       const expectedWorking = engineers.filter((_, idx) => {
+        const engineer = engineers[idx];
+        
         // Weekend rotation: same engineer covers both Saturday and Sunday
         if (!isWeekday) {
           // For weekend days, calculate which weekend pair this belongs to
@@ -101,7 +110,17 @@ function generateEnhancedSchedule(
             weekendWeek = Math.floor(daysSinceSundayStart / 7);
           }
           
-          return (weekendWeek + seeds.weekend) % engineers.length === idx;
+          // Check if this engineer should be assigned based on rotation
+          const shouldBeAssigned = (weekendWeek + seeds.weekend) % engineers.length === idx;
+          
+          // Exclude if this engineer was OnCall in the previous week
+          const previousWeek = weekendWeek - 1;
+          const previousOnCall = onCallByWeek[previousWeek];
+          if (previousOnCall && previousOnCall === engineer) {
+            return false; // Cannot work weekend after being OnCall
+          }
+          
+          return shouldBeAssigned;
         }
         return true; // All engineers available for weekdays initially
       });
@@ -182,26 +201,32 @@ function generateEnhancedSchedule(
         });
       } else if (isWeekday && working.length > 0) {
         // Weekday role assignments with rotation
-        // Calculate the week and day offset for weekday assignments
-        const daysSinceStart = Math.floor((currentDate.getTime() - startDateObj.getTime()) / (24 * 60 * 60 * 1000));
-        const week = Math.floor(daysSinceStart / 7);
-        const dayOffset = (week * 7) + day;
+        const dayOffset = (currentWeek * 7) + day;
         
-        if (working.length >= 1) {
-          daySchedule.Chat = working[(dayOffset + seeds.chat) % working.length];
+        // Assign OnCall engineer for the week (if not already assigned)
+        let onCallEngineer: string;
+        if (onCallByWeek[currentWeek]) {
+          onCallEngineer = onCallByWeek[currentWeek];
+        } else {
+          onCallEngineer = working[(currentWeek + seeds.oncall) % working.length];
+          onCallByWeek[currentWeek] = onCallEngineer;
         }
-        if (working.length >= 2) {
-          // OnCall engineer is assigned per week, not per day
-          daySchedule.OnCall = working[(week + seeds.oncall) % working.length];
+        daySchedule.OnCall = onCallEngineer;
+        
+        // Filter out OnCall engineer from other role assignments
+        const nonOnCallEngineers = working.filter(eng => eng !== onCallEngineer);
+        
+        if (nonOnCallEngineers.length >= 1) {
+          daySchedule.Chat = nonOnCallEngineers[(dayOffset + seeds.chat) % nonOnCallEngineers.length];
         }
-        if (working.length >= 3) {
-          daySchedule.Appointments = working[(dayOffset + seeds.appointments) % working.length];
+        if (nonOnCallEngineers.length >= 2) {
+          daySchedule.Appointments = nonOnCallEngineers[(dayOffset + seeds.appointments) % nonOnCallEngineers.length];
         }
-        if (working.length >= 4) {
-          daySchedule.Early1 = working[(dayOffset + seeds.early) % working.length];
+        if (nonOnCallEngineers.length >= 3) {
+          daySchedule.Early1 = nonOnCallEngineers[(dayOffset + seeds.early) % nonOnCallEngineers.length];
         }
-        if (working.length >= 5) {
-          daySchedule.Early2 = working[(dayOffset + seeds.early + 1) % working.length];
+        if (nonOnCallEngineers.length >= 4) {
+          daySchedule.Early2 = nonOnCallEngineers[(dayOffset + seeds.early + 1) % nonOnCallEngineers.length];
         }
         
         // Log enhanced role assignments
