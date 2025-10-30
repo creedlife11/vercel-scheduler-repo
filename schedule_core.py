@@ -364,7 +364,7 @@ def get_fairness_weighted_rotation_order(engineers: List[str], role: str, seed: 
 def enhanced_weekend_assignment(engineers: List[str], week_idx: int, fairness_tracker: 'EnhancedFairnessTracker', 
                                base_seed: int = 0) -> str:
     """
-    Enhanced weekend assignment that considers fairness weighting.
+    Enhanced weekend assignment that considers fairness weighting and prevents consecutive weekends.
     Builds upon existing build_rotation and weekend_worker_for_week functions.
     """
     # Get base rotation
@@ -373,8 +373,49 @@ def enhanced_weekend_assignment(engineers: List[str], week_idx: int, fairness_tr
     # Apply fairness weighting using new fairness-weighted selection
     fairness_ordered = calculate_fairness_weighted_selection(base_rotation, 'weekend', fairness_tracker, base_rotation)
     
-    # Select weekend worker using fairness-weighted rotation
-    selected_engineer = fairness_ordered[week_idx % len(fairness_ordered)]
+    # Prevent consecutive weekends - exclude engineer who worked previous weekend
+    available_engineers = fairness_ordered.copy()
+    if week_idx > 0:
+        # Get who worked the previous weekend (use cached assignment if available)
+        previous_weekend_worker = get_weekend_worker_for_week(engineers, week_idx - 1, fairness_tracker, base_seed)
+        
+        # Remove previous weekend worker from available options if there are alternatives
+        if previous_weekend_worker in available_engineers and len(available_engineers) > 1:
+            available_engineers.remove(previous_weekend_worker)
+    
+    # Select weekend worker from available engineers (fairness-weighted, no consecutive weekends)
+    selected_engineer = available_engineers[0]  # First in fairness-ordered list
+    
+    # Track the assignment with fairness impact (caller will handle tracking to avoid double-tracking)
+    fairness_tracker.track_assignment_with_weight(selected_engineer, 'weekend', f"week_{week_idx}", 2.0)  # Weekend work has higher weight
+    
+    return selected_engineer
+
+
+def enhanced_weekend_assignment_with_cache(engineers: List[str], week_idx: int, fairness_tracker: 'EnhancedFairnessTracker', 
+                                          weekend_cache: dict, base_seed: int = 0) -> str:
+    """
+    Enhanced weekend assignment that uses a cache to prevent consecutive weekends.
+    This ensures consistent weekend assignments and prevents consecutive weekend conflicts.
+    """
+    # Get base rotation
+    base_rotation = build_rotation(engineers, base_seed)
+    
+    # Apply fairness weighting using new fairness-weighted selection
+    fairness_ordered = calculate_fairness_weighted_selection(base_rotation, 'weekend', fairness_tracker, base_rotation)
+    
+    # Prevent consecutive weekends - exclude engineer who worked previous weekend
+    available_engineers = fairness_ordered.copy()
+    if week_idx > 0 and (week_idx - 1) in weekend_cache:
+        # Get who worked the previous weekend from cache
+        previous_weekend_worker = weekend_cache[week_idx - 1]
+        
+        # Remove previous weekend worker from available options if there are alternatives
+        if previous_weekend_worker in available_engineers and len(available_engineers) > 1:
+            available_engineers.remove(previous_weekend_worker)
+    
+    # Select weekend worker from available engineers (fairness-weighted, no consecutive weekends)
+    selected_engineer = available_engineers[0]  # First in fairness-ordered list
     
     # Track the assignment with fairness impact
     fairness_tracker.track_assignment_with_weight(selected_engineer, 'weekend', f"week_{week_idx}", 2.0)  # Weekend work has higher weight
@@ -1345,13 +1386,35 @@ def make_schedule_with_decisions(start_sunday: date, weeks: int, engineers: List
         columns += [f"{i+1}) Engineer", f"Status {i+1}", f"Shift {i+1}"]
 
     rows = []
+    weekend_assignments_cache = {}  # Cache weekend assignments to avoid double-tracking and ensure consistency
+    
     for d in dates:
         w = week_index(start_sunday, d)
         dow = pd.Timestamp(d).strftime("%a")
         
+        # Handle weekend assignments (Saturday and Sunday get same engineer)
+        if d.weekday() in [5, 6]:  # Saturday or Sunday
+            if w not in weekend_assignments_cache:
+                # First time assigning this week's weekend - call enhanced assignment with cache
+                weekend_worker = enhanced_weekend_assignment_with_cache(engineers, w, fairness_tracker, weekend_assignments_cache, seeds.get("weekend", 0))
+                weekend_assignments_cache[w] = weekend_worker
+                
+                # Log weekend assignment decision with fairness context (only once per weekend)
+                fairness_weights = fairness_tracker.get_fairness_weights('weekend')
+                alternatives = [eng for eng in weekend_seeded if eng != weekend_worker][:2]
+                decision_log.append(DecisionEntry(
+                    date=d.isoformat(),
+                    decision_type="enhanced_weekend_assignment",
+                    affected_engineers=[weekend_worker],
+                    reason=f"Enhanced weekend assignment for week {w} using fairness-weighted selection with consecutive weekend prevention (fairness weight: {fairness_weights.get(weekend_worker, 0)})",
+                    alternatives_considered=alternatives
+                ))
+            else:
+                # Use cached assignment for this weekend
+                weekend_worker = weekend_assignments_cache[w]
+        
         # Track weekend compensation for weekend workers
         if d.weekday() == 5:  # Saturday - start of weekend
-            weekend_worker = enhanced_weekend_assignment(engineers, w, fairness_tracker, seeds.get("weekend", 0))
             pattern_type = 'A'  # Week A pattern: Mon,Tue,Wed,Thu,Sat
             compensation_dates = calculate_weekend_compensation(weekend_worker, d, pattern_type)
             
@@ -1361,20 +1424,8 @@ def make_schedule_with_decisions(start_sunday: date, weeks: int, engineers: List
                 compensation_dates=compensation_dates,
                 pattern_type=pattern_type
             ))
-            
-            # Log weekend assignment decision with fairness context
-            fairness_weights = fairness_tracker.get_fairness_weights('weekend')
-            alternatives = [eng for eng in weekend_seeded if eng != weekend_worker][:2]
-            decision_log.append(DecisionEntry(
-                date=d.isoformat(),
-                decision_type="enhanced_weekend_assignment",
-                affected_engineers=[weekend_worker],
-                reason=f"Enhanced weekend assignment for week {w} using fairness-weighted selection (pattern {pattern_type}, fairness weight: {fairness_weights.get(weekend_worker, 0)})",
-                alternatives_considered=alternatives
-            ))
         
         elif d.weekday() == 6:  # Sunday - second day of weekend
-            weekend_worker = enhanced_weekend_assignment(engineers, w, fairness_tracker, seeds.get("weekend", 0))
             pattern_type = 'B'  # Week B pattern: Sun,Tue,Wed,Thu,Fri
             compensation_dates = calculate_weekend_compensation(weekend_worker, d, pattern_type)
             
@@ -1383,17 +1434,6 @@ def make_schedule_with_decisions(start_sunday: date, weeks: int, engineers: List
                 if comp.engineer == weekend_worker and comp.weekend_date == d - timedelta(days=1):
                     comp.compensation_dates.extend(compensation_dates)
                     comp.pattern_type = 'A+B'  # Both Saturday and Sunday
-            
-            # Log Sunday weekend assignment decision with fairness context
-            fairness_weights = fairness_tracker.get_fairness_weights('weekend')
-            alternatives = [eng for eng in weekend_seeded if eng != weekend_worker][:2]
-            decision_log.append(DecisionEntry(
-                date=d.isoformat(),
-                decision_type="enhanced_weekend_assignment",
-                affected_engineers=[weekend_worker],
-                reason=f"Enhanced weekend assignment for week {w} Sunday using fairness-weighted selection (pattern {pattern_type}, fairness weight: {fairness_weights.get(weekend_worker, 0)})",
-                alternatives_considered=alternatives
-            ))
         
         working, leave_today, roles = generate_day_assignments(
             d, engineers, start_sunday, weekend_seeded, leave_map, seeds, 

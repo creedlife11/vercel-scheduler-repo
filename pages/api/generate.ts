@@ -33,6 +33,7 @@ function generateEnhancedSchedule(
   const schedule: any[] = [];
   const decisionLog: DecisionEntry[] = [];
   const roles = ['Weekend', 'Chat', 'OnCall', 'Appointments', 'Early'];
+  const weekendAssignmentCache: { [key: number]: string } = {}; // Cache weekend assignments to ensure Saturday/Sunday pairing
   
   // Create leave map for quick lookup
   const leaveMap: { [key: string]: Set<string> } = {};
@@ -110,34 +111,69 @@ function generateEnhancedSchedule(
           weekendWeek = Math.floor(daysSinceSundayStart / 7);
         }
         
-        // Find the intended engineer based on rotation
-        let intendedEngineerIdx = (weekendWeek + seeds.weekend) % engineers.length;
-        let intendedEngineer = engineers[intendedEngineerIdx];
-        
-        // Check if intended engineer was OnCall in previous week
-        const previousWeek = weekendWeek - 1;
-        const previousOnCall = onCallByWeek[previousWeek];
-        
-        if (previousOnCall && previousOnCall === intendedEngineer) {
-          // Find next available engineer who wasn't OnCall in previous week
-          for (let i = 1; i < engineers.length; i++) {
-            const nextIdx = (intendedEngineerIdx + i) % engineers.length;
-            const nextEngineer = engineers[nextIdx];
-            if (nextEngineer !== previousOnCall) {
-              intendedEngineer = nextEngineer;
-              break;
-            }
+        // Check if we already assigned this weekend (for Saturday/Sunday pairing)
+        let intendedEngineer: string;
+        if (weekendAssignmentCache[weekendWeek]) {
+          // Use cached assignment to ensure Saturday/Sunday pairing
+          intendedEngineer = weekendAssignmentCache[weekendWeek];
+        } else {
+          // First time assigning this weekend - calculate with conflict prevention
+          let intendedEngineerIdx = (weekendWeek + seeds.weekend) % engineers.length;
+          intendedEngineer = engineers[intendedEngineerIdx];
+          
+          // Check for consecutive weekend prevention
+          let previousWeekendEngineer: string | null = null;
+          if (weekendWeek > 0 && weekendAssignmentCache[weekendWeek - 1]) {
+            previousWeekendEngineer = weekendAssignmentCache[weekendWeek - 1];
           }
           
-          // Log the exclusion and fallback
-          decisionLog.push({
-            date: dateStr,
-            decision_type: 'weekend_oncall_exclusion',
-            affected_engineers: [previousOnCall],
-            reason: `${previousOnCall} excluded from weekend (was OnCall in previous week), assigned ${intendedEngineer} instead`,
-            alternatives_considered: [engineers[intendedEngineerIdx]],
-            timestamp: new Date().toISOString()
-          });
+          // Check if intended engineer was OnCall in previous week
+          const previousWeek = weekendWeek - 1;
+          const previousOnCall = onCallByWeek[previousWeek];
+          
+          // Apply exclusions: consecutive weekend prevention and OnCall conflict prevention
+          const exclusions: string[] = [];
+          let exclusionReasons: string[] = [];
+          
+          if (previousWeekendEngineer && previousWeekendEngineer === intendedEngineer) {
+            exclusions.push(previousWeekendEngineer);
+            exclusionReasons.push(`did previous weekend (week ${weekendWeek - 1})`);
+          }
+          
+          if (previousOnCall && previousOnCall === intendedEngineer && !exclusions.includes(previousOnCall)) {
+            exclusions.push(previousOnCall);
+            exclusionReasons.push(`was OnCall in previous week`);
+          }
+          
+          if (exclusions.length > 0) {
+            // Find next available engineer who doesn't have conflicts
+            for (let i = 1; i < engineers.length; i++) {
+              const nextIdx = (intendedEngineerIdx + i) % engineers.length;
+              const nextEngineer = engineers[nextIdx];
+              
+              // Check if this engineer has any conflicts
+              const hasConsecutiveWeekendConflict = previousWeekendEngineer && nextEngineer === previousWeekendEngineer;
+              const hasOnCallConflict = previousOnCall && nextEngineer === previousOnCall;
+              
+              if (!hasConsecutiveWeekendConflict && !hasOnCallConflict) {
+                intendedEngineer = nextEngineer;
+                break;
+              }
+            }
+            
+            // Log the exclusion and fallback
+            decisionLog.push({
+              date: dateStr,
+              decision_type: 'weekend_conflict_prevention',
+              affected_engineers: exclusions,
+              reason: `${exclusions.join(', ')} excluded from weekend (${exclusionReasons.join(', ')}), assigned ${intendedEngineer} instead`,
+              alternatives_considered: [engineers[intendedEngineerIdx]],
+              timestamp: new Date().toISOString()
+            });
+          }
+          
+          // Cache the assignment for Saturday/Sunday pairing
+          weekendAssignmentCache[weekendWeek] = intendedEngineer;
         }
         
         expectedWorking = [intendedEngineer];
@@ -228,7 +264,75 @@ function generateEnhancedSchedule(
         if (onCallByWeek[currentWeek]) {
           onCallEngineer = onCallByWeek[currentWeek];
         } else {
-          onCallEngineer = working[(currentWeek + seeds.oncall) % working.length];
+          // Find intended OnCall engineer
+          let intendedOnCallIdx = (currentWeek + seeds.oncall) % working.length;
+          let intendedOnCall = working[intendedOnCallIdx];
+          
+          // Check if intended engineer did the previous weekend (work-life balance)
+          // Previous weekend would be at the end of the previous week
+          const previousWeekend = currentWeek - 1;
+          let previousWeekendEngineer: string | null = null;
+          
+          // Look through weekend entries to find who did the previous weekend
+          const previousWeekendSunday = new Date(startDateObj);
+          previousWeekendSunday.setDate(startDateObj.getDate() + (previousWeekend * 7));
+          const previousWeekendSundayStr = previousWeekendSunday.toISOString().split('T')[0];
+          
+          // Find who did the previous weekend by checking processed schedule
+          for (const entry of schedule) {
+            if (entry.Date === previousWeekendSundayStr && entry.Weekend) {
+              previousWeekendEngineer = entry.Weekend;
+              break;
+            }
+          }
+          
+          // Also check if intended engineer will do the current week's weekend
+          const currentWeekendSunday = new Date(startDateObj);
+          currentWeekendSunday.setDate(startDateObj.getDate() + (currentWeek * 7));
+          const currentWeekendSundayStr = currentWeekendSunday.toISOString().split('T')[0];
+          
+          let currentWeekendEngineer: string | null = null;
+          for (const entry of schedule) {
+            if (entry.Date === currentWeekendSundayStr && entry.Weekend) {
+              currentWeekendEngineer = entry.Weekend;
+              break;
+            }
+          }
+          
+          // If intended OnCall engineer did previous weekend OR will do current weekend, find alternative
+          const hasWeekendConflict = (previousWeekendEngineer && intendedOnCall === previousWeekendEngineer) ||
+                                   (currentWeekendEngineer && intendedOnCall === currentWeekendEngineer);
+          
+          if (hasWeekendConflict) {
+            // Find next available engineer who doesn't have weekend conflicts
+            for (let i = 1; i < working.length; i++) {
+              const nextIdx = (intendedOnCallIdx + i) % working.length;
+              const nextEngineer = working[nextIdx];
+              
+              // Check if this engineer has weekend conflicts
+              const hasPreviousWeekendConflict = previousWeekendEngineer && nextEngineer === previousWeekendEngineer;
+              const hasCurrentWeekendConflict = currentWeekendEngineer && nextEngineer === currentWeekendEngineer;
+              
+              if (!hasPreviousWeekendConflict && !hasCurrentWeekendConflict) {
+                intendedOnCall = nextEngineer;
+                break;
+              }
+            }
+            
+            // Log the exclusion and fallback
+            const conflictEngineer = previousWeekendEngineer || currentWeekendEngineer;
+            const conflictReason = previousWeekendEngineer ? 'did previous weekend' : 'will do current weekend';
+            decisionLog.push({
+              date: dateStr,
+              decision_type: 'oncall_weekend_exclusion',
+              affected_engineers: [conflictEngineer!],
+              reason: `${conflictEngineer} excluded from OnCall (${conflictReason}), assigned ${intendedOnCall} instead`,
+              alternatives_considered: [working[intendedOnCallIdx]],
+              timestamp: new Date().toISOString()
+            });
+          }
+          
+          onCallEngineer = intendedOnCall;
           onCallByWeek[currentWeek] = onCallEngineer;
         }
         daySchedule.OnCall = onCallEngineer;
