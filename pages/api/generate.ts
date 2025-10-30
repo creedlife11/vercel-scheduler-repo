@@ -32,7 +32,7 @@ function generateEnhancedSchedule(
 ): EnhancedScheduleResult {
   const schedule: any[] = [];
   const decisionLog: DecisionEntry[] = [];
-  const roles = ['Weekend', 'Chat', 'OnCall', 'Appointments', 'Early1', 'Early2'];
+  const roles = ['Weekend', 'Chat', 'OnCall', 'Appointments', 'Early'];
   
   // Create leave map for quick lookup
   const leaveMap: { [key: string]: Set<string> } = {};
@@ -178,8 +178,7 @@ function generateEnhancedSchedule(
         Chat: '',
         OnCall: '',
         Appointments: '',
-        Early1: '',
-        Early2: ''
+        Early: ''
       };
       
       if (!isWeekday && working.length > 0) {
@@ -223,10 +222,7 @@ function generateEnhancedSchedule(
           daySchedule.Appointments = nonOnCallEngineers[(dayOffset + seeds.appointments) % nonOnCallEngineers.length];
         }
         if (nonOnCallEngineers.length >= 3) {
-          daySchedule.Early1 = nonOnCallEngineers[(dayOffset + seeds.early) % nonOnCallEngineers.length];
-        }
-        if (nonOnCallEngineers.length >= 4) {
-          daySchedule.Early2 = nonOnCallEngineers[(dayOffset + seeds.early + 1) % nonOnCallEngineers.length];
+          daySchedule.Early = nonOnCallEngineers[(dayOffset + seeds.early) % nonOnCallEngineers.length];
         }
         
         // Log enhanced role assignments

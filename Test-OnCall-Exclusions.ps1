@@ -3,7 +3,7 @@ $BaseUrl = "http://localhost:3001"
 
 Write-Host "Testing OnCall Exclusion Logic" -ForegroundColor Cyan
 Write-Host "Expected:" -ForegroundColor Yellow
-Write-Host "1. OnCall engineers should NOT be assigned to other weekday tasks (Chat, Appointments, etc.)" -ForegroundColor Yellow
+Write-Host "1. OnCall engineers should NOT be assigned to other weekday tasks (Chat, Appointments, Early)" -ForegroundColor Yellow
 Write-Host "2. Previous week's OnCall engineer should NOT be assigned to following weekend" -ForegroundColor Yellow
 
 $payload = @{
@@ -27,7 +27,7 @@ try {
     Write-Host "SUCCESS! Generated $($response.schedule.Count) schedule entries" -ForegroundColor Green
     
     Write-Host "`nComplete Schedule:" -ForegroundColor Yellow
-    $response.schedule | Sort-Object Date | Select-Object Date, Day, Weekend, Chat, OnCall, Appointments, Early1, Early2 | Format-Table -AutoSize
+    $response.schedule | Sort-Object Date | Select-Object Date, Day, Weekend, Chat, OnCall, Appointments, Early | Format-Table -AutoSize
     
     # Test 1: Check if OnCall engineers are assigned to other weekday tasks
     Write-Host "`nTest 1: OnCall Engineer Exclusion from Other Tasks" -ForegroundColor Cyan
@@ -40,8 +40,7 @@ try {
         
         if ($entry.Chat -eq $onCallEng) { $otherRoles += "Chat" }
         if ($entry.Appointments -eq $onCallEng) { $otherRoles += "Appointments" }
-        if ($entry.Early1 -eq $onCallEng) { $otherRoles += "Early1" }
-        if ($entry.Early2 -eq $onCallEng) { $otherRoles += "Early2" }
+        if ($entry.Early -eq $onCallEng) { $otherRoles += "Early" }
         
         if ($otherRoles.Count -gt 0) {
             $violations += "$($entry.Day) $($entry.Date): $onCallEng is OnCall AND $($otherRoles -join ', ')"
