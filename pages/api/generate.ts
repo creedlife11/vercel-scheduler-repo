@@ -57,7 +57,7 @@ function generateEnhancedSchedule(
       
       // Determine who should be working
       const expectedWorking = engineers.filter((_, idx) => {
-        // Simple weekend rotation
+        // Weekend rotation: same engineer covers both Saturday and Sunday
         if (!isWeekday) return (week + seeds.weekend) % engineers.length === idx;
         return true; // All engineers available for weekdays initially
       });
@@ -120,8 +120,19 @@ function generateEnhancedSchedule(
       };
       
       if (!isWeekday && working.length > 0) {
-        // Weekend assignment
-        daySchedule.Weekend = working[0];
+        // Weekend assignment - same engineer covers both Saturday and Sunday
+        const weekendEngineer = working[0];
+        daySchedule.Weekend = weekendEngineer;
+        
+        // Log weekend assignment decision
+        decisionLog.push({
+          date: dateStr,
+          decision_type: 'weekend_assignment',
+          affected_engineers: [weekendEngineer],
+          reason: `Weekend assignment for ${dayName} - ${weekendEngineer} covers entire weekend (Saturday & Sunday)`,
+          alternatives_considered: working.slice(1, 3),
+          timestamp: new Date().toISOString()
+        });
       } else if (isWeekday && working.length > 0) {
         // Weekday role assignments with rotation
         const dayOffset = (week * 7) + day;

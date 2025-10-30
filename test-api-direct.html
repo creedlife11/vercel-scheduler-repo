@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Scheduler API Diagnostic Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+
+        .info {
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+        }
+
+        button {
+            padding: 10px 15px;
+            margin: 5px;
+            cursor: pointer;
+        }
+
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+
+        .log {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🔧 Scheduler API Diagnostic Tool</h1>
+
+    <div class="test-section info">
+        <h2>Environment Info</h2>
+        <p><strong>Current URL:</strong> <span id="currentUrl"></span></p>
+        <p><strong>User Agent:</strong> <span id="userAgent"></span></p>
+        <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
+    </div>
+
+    <div class="test-section">
+        <h2>🧪 API Tests</h2>
+        <button onclick="testAPI('json')">Test JSON Format</button>
+        <button onclick="testAPI('csv')">Test CSV Format</button>
+        <button onclick="testAPI('xlsx')">Test XLSX Format</button>
+        <button onclick="testFeatureFlags()">Test Feature Flags</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        // Initialize page
+        document.getElementById('currentUrl').textContent = window.location.href;
+        document.getElementById('userAgent').textContent = navigator.userAgent;
+        document.getElementById('timestamp').textContent = new Date().toISOString();
+
+        let testCounter = 0;
+
+        function addResult(title, content, type = 'info') {
+            testCounter++;
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-section ${type}`;
+            resultDiv.innerHTML = `
+                <h3>${testCounter}. ${title}</h3>
+                <div class="log">${content}</div>
+            `;
+            resultsDiv.appendChild(resultDiv);
+            resultDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            testCounter = 0;
+        }
+
+        async function testAPI(format) {
+            const startTime = Date.now();
+
+            try {
+                const payload = {
+                    engineers: ["Engineer A", "Engineer B", "Engineer C", "Engineer D", "Engineer E", "Engineer F"],
+                    start_sunday: "2024-12-01", // A Sunday
+                    weeks: 2,
+                    seeds: { weekend: 0, chat: 0, oncall: 1, appointments: 2, early: 0 },
+                    leave: [],
+                    format: format
+                };
+
+                console.log(`Testing ${format.toUpperCase()} format...`);
+                console.log('Payload:', payload);
+
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const duration = Date.now() - startTime;
+
+                console.log('Response status:', response.status);
+                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+                let responseData;
+                let responseText = '';
+
+                if (format === 'json') {
+                    responseData = await response.json();
+                    responseText = JSON.stringify(responseData, null, 2);
+                } else if (format === 'xlsx') {
+                    responseData = await response.blob();
+                    responseText = `Blob received: ${responseData.size} bytes, type: ${responseData.type}`;
+                } else {
+                    responseData = await response.text();
+                    responseText = responseData.substring(0, 500) + (responseData.length > 500 ? '...' : '');
+                }
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${responseText}`);
+                }
+
+                const content = `
+                    <p><strong>✅ SUCCESS</strong></p>
+                    <p><strong>Status:</strong> ${response.status}</p>
+                    <p><strong>Duration:</strong> ${duration}ms</p>
+                    <p><strong>Content-Type:</strong> ${response.headers.get('content-type')}</p>
+                    ${format === 'json' && responseData.schedule ? `<p><strong>Schedule entries:</strong> ${responseData.schedule.length}</p>` : ''}
+                    ${format === 'json' && responseData.decisionLog ? `<p><strong>Decision log entries:</strong> ${responseData.decisionLog.length}</p>` : ''}
+                    <p><strong>Response Preview:</strong></p>
+                    <pre>${responseText}</pre>
+                `;
+
+                addResult(`${format.toUpperCase()} API Test`, content, 'success');
+
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                console.error(`${format.toUpperCase()} API test failed:`, error);
+
+                const content = `
+                    <p><strong>❌ FAILED</strong></p>
+                    <p><strong>Duration:</strong> ${duration}ms</p>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p><strong>Stack:</strong></p>
+                    <pre>${error.stack || 'No stack trace available'}</pre>
+                `;
+
+                addResult(`${format.toUpperCase()} API Test`, content, 'error');
+            }
+        }
+
+        async function testFeatureFlags() {
+            const startTime = Date.now();
+
+            try {
+                console.log('Testing feature flags endpoint...');
+
+                const response = await fetch('/api/config/features', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const duration = Date.now() - startTime;
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+
+                const content = `
+                    <p><strong>✅ SUCCESS</strong></p>
+                    <p><strong>Status:</strong> ${response.status}</p>
+                    <p><strong>Duration:</strong> ${duration}ms</p>
+                    <p><strong>Environment:</strong> ${data.environment}</p>
+                    <p><strong>Features:</strong></p>
+                    <pre>${JSON.stringify(data.features, null, 2)}</pre>
+                `;
+
+                addResult('Feature Flags Test', content, 'success');
+
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                console.error('Feature flags test failed:', error);
+
+                const content = `
+                    <p><strong>❌ FAILED</strong></p>
+                    <p><strong>Duration:</strong> ${duration}ms</p>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                `;
+
+                addResult('Feature Flags Test', content, 'error');
+            }
+        }
+
+        // Auto-run basic test on page load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                addResult('Page Loaded', `
+                    <p>Diagnostic tool loaded successfully.</p>
+                    <p>Click the test buttons above to diagnose API issues.</p>
+                    <p><strong>Note:</strong> Ignore any "Jazz Networks Agent" errors in the console - they're unrelated to your scheduler.</p>
+                `, 'info');
+            }, 500);
+        });
+    </script>
+</body>
+
+</html>
