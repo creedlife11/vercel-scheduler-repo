@@ -168,12 +168,15 @@ function generateEnhancedSchedule(
         const weekendEngineer = working[0];
         daySchedule.Weekend = weekendEngineer;
         
+        // Weekend engineer also covers OnCall for the weekend
+        daySchedule.OnCall = weekendEngineer;
+        
         // Log weekend assignment decision
         decisionLog.push({
           date: dateStr,
           decision_type: 'weekend_assignment',
           affected_engineers: [weekendEngineer],
-          reason: `Weekend assignment for ${dayName} - ${weekendEngineer} covers entire weekend (Saturday & Sunday)`,
+          reason: `Weekend assignment for ${dayName} - ${weekendEngineer} covers entire weekend (Saturday & Sunday) and OnCall duties`,
           alternatives_considered: working.slice(1, 3),
           timestamp: new Date().toISOString()
         });
@@ -188,7 +191,8 @@ function generateEnhancedSchedule(
           daySchedule.Chat = working[(dayOffset + seeds.chat) % working.length];
         }
         if (working.length >= 2) {
-          daySchedule.OnCall = working[(dayOffset + seeds.oncall) % working.length];
+          // OnCall engineer is assigned per week, not per day
+          daySchedule.OnCall = working[(week + seeds.oncall) % working.length];
         }
         if (working.length >= 3) {
           daySchedule.Appointments = working[(dayOffset + seeds.appointments) % working.length];
